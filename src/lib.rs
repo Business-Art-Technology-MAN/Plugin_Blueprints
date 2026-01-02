@@ -106,6 +106,7 @@ impl EditorPlugin for BlueprintEditorPlugin {
                         }
                     }
                 }),
+                categories: vec!["Blueprints".to_string()],
             }
         ]
     }
