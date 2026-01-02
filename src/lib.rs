@@ -81,35 +81,40 @@ impl EditorPlugin for BlueprintEditorPlugin {
     }
 
     fn file_types(&self) -> Vec<FileTypeDefinition> {
-        vec![folder_file_type(
-            "blueprint-class",
-            "class",
-            "Blueprint Class",
-            FileIcon::Component,
-            "graph_save.json",
-            vec![
-                PathTemplate::Folder {
-                    path: "events".into(),
+        vec![
+            FileTypeDefinition {
+                id: FileTypeId::new("class"),
+                extension: "class".to_string(),
+                display_name: "Blueprint Class".to_string(),
+                icon: ui::IconName::Component,
+                color: gpui::rgb(0x9C27B0).into(),
+                structure: FileStructure::FolderBased {
+                    marker_file: "graph_save.json".to_string(),
+                    template_structure: vec![
+                        PathTemplate::Folder {
+                            path: "events".into(),
+                        },
+                    ],
                 },
-            ],
-            json!({
-                "graph": {
-                    "nodes": [],
-                    "connections": [],
-                    "comments": [],
-                    "metadata": {
-                        "version": "0.1.0"
+                default_content: json!({
+                    "graph": {
+                        "nodes": [],
+                        "connections": [],
+                        "comments": [],
+                        "metadata": {
+                            "version": "0.1.0"
+                        }
                     }
-                }
-            }),
-        )]
+                }),
+            }
+        ]
     }
 
     fn editors(&self) -> Vec<EditorMetadata> {
         vec![EditorMetadata {
             id: EditorId::new("blueprint-editor"),
             display_name: "Blueprint Editor".into(),
-            supported_file_types: vec![FileTypeId::new("blueprint-class")],
+            supported_file_types: vec![FileTypeId::new("class")],
         }]
     }
 

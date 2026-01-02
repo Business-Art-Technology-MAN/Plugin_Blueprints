@@ -9,16 +9,16 @@ name = "blueprint_editor_plugin"
 
 [dependencies]
 # Plugin API
-plugin_editor_api = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "6c8bbc7947ab5b549cf2419ddd1c0959a4082012" }
+plugin_editor_api = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "a40e838b4d94ef0506d77163e1977cdfbf333666" }
 
 # UI dependencies
 gpui = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8", features = ["runtime_shaders", "macos-blade"] }
-ui = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "6c8bbc7947ab5b549cf2419ddd1c0959a4082012" }
-ui_common = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "6c8bbc7947ab5b549cf2419ddd1c0959a4082012" }
+ui = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "a40e838b4d94ef0506d77163e1977cdfbf333666" }
+ui_common = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "a40e838b4d94ef0506d77163e1977cdfbf333666" }
 
 # Blueprint editor dependencies
-pulsar_std = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "6c8bbc7947ab5b549cf2419ddd1c0959a4082012" }
-engine_backend = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "6c8bbc7947ab5b549cf2419ddd1c0959a4082012" }
+pulsar_std = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "a40e838b4d94ef0506d77163e1977cdfbf333666" }
+engine_backend = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", rev = "a40e838b4d94ef0506d77163e1977cdfbf333666" }
 # Utilities
 uuid = { version = "1.0", features = ["v4"] }
 smol = "2.0"
