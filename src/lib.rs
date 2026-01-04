@@ -126,10 +126,7 @@ impl EditorPlugin for BlueprintEditorPlugin {
         window: &mut Window,
         cx: &mut App,
         logger: &plugin_editor_api::EditorLogger,
-    ) -> Result<
-        (Arc<dyn PanelView>, Box<dyn EditorInstance>),
-        PluginError
-    > {
+    ) -> Result<(Arc<dyn PanelView>, Box<dyn EditorInstance>), PluginError> {
 
         logger.info("BP EDITOR LOADED!!!!!");
 
