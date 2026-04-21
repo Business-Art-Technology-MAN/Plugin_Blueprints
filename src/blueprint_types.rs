@@ -5,6 +5,7 @@ use gpui::*;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+
 use ui::graph::DataType;
 
 // Compilation status tracking for UI feedback
@@ -343,7 +344,7 @@ impl NodeDefinitions {
     pub fn load() -> &'static NodeDefinitions {
         NODE_DEFINITIONS.get_or_init(|| {
             // Load dynamic node definitions from pulsar_std
-            let metadata = ui::compiler::node_metadata::extract_node_metadata()
+            let metadata = pbgc::extract_node_metadata()
                 .unwrap_or_else(|e| {
                     eprintln!("Failed to load node metadata: {}", e);
                     std::collections::HashMap::new()
@@ -361,7 +362,7 @@ impl NodeDefinitions {
     }
 
     fn from_node_metadata_and_libraries(
-        metadata: std::collections::HashMap<String, ui::compiler::NodeMetadata>,
+        metadata: std::collections::HashMap<String, graphy::NodeMetadata>,
         lib_manager: ui::graph::LibraryManager
     ) -> NodeDefinitions {
         let mut categories_map: std::collections::HashMap<String, Vec<NodeDefinition>> = std::collections::HashMap::new();
@@ -417,14 +418,14 @@ impl NodeDefinitions {
         Self::categories_to_definitions(categories_map)
     }
 
-    fn from_node_metadata(metadata: std::collections::HashMap<String, ui::compiler::NodeMetadata>) -> NodeDefinitions {
+    fn from_node_metadata(metadata: std::collections::HashMap<String, graphy::NodeMetadata>) -> NodeDefinitions {
         let mut categories_map: std::collections::HashMap<String, Vec<NodeDefinition>> = std::collections::HashMap::new();
         Self::populate_categories_from_metadata(metadata, &mut categories_map);
         Self::categories_to_definitions(categories_map)
     }
 
     fn populate_categories_from_metadata(
-        metadata: std::collections::HashMap<String, ui::compiler::NodeMetadata>,
+        metadata: std::collections::HashMap<String, graphy::NodeMetadata>,
         categories_map: &mut std::collections::HashMap<String, Vec<NodeDefinition>>
     ) {
         // Add special reroute node to Utility category
@@ -448,11 +449,11 @@ impl NodeDefinitions {
             let mut inputs = Vec::new();
             let mut outputs = Vec::new();
 
-            // Add execution inputs
-            for exec_pin in node_meta.exec_inputs.iter() {
+            // Add execution input for nodes that need sequencing (fn_ and control_flow)
+            if matches!(node_meta.node_type, graphy::NodeTypes::fn_ | graphy::NodeTypes::control_flow) {
                 inputs.push(PinDefinition {
-                    id: exec_pin.to_string(),
-                    name: exec_pin.to_string(),
+                    id: "exec".to_string(),
+                    name: "exec".to_string(),
                     data_type: DataType::from_type_str("execution"),
                     pin_type: PinType::Input,
                 });
@@ -463,7 +464,7 @@ impl NodeDefinitions {
                 inputs.push(PinDefinition {
                     id: param.name.to_string(),
                     name: param.name.to_string(),
-                    data_type: DataType::from_type_str(&param.ty),
+                    data_type: DataType::from_type_str(&param.param_type),
                     pin_type: PinType::Input,
                 });
             }
@@ -478,35 +479,31 @@ impl NodeDefinitions {
                 });
             }
 
-            // Add regular outputs (return type)
-            if let Some(return_type) = node_meta.return_type {
-                outputs.push(PinDefinition {
-                    id: "result".to_string(),
-                    name: "result".to_string(),
-                    data_type: DataType::from_type_str(return_type),
-                    pin_type: PinType::Output,
-                });
+            // Add regular outputs (return type, skip void)
+            if let Some(return_type) = &node_meta.return_type {
+                if return_type.type_string != "()" {
+                    outputs.push(PinDefinition {
+                        id: "result".to_string(),
+                        name: "result".to_string(),
+                        data_type: DataType::from_type_str(&return_type.type_string),
+                        pin_type: PinType::Output,
+                    });
+                }
             }
 
-            let category = node_meta.category.to_string();
-
-            // Use first line of docs as short description, full docs for documentation panel
-            let documentation = node_meta.documentation.join("\n");
-            let description = node_meta.documentation
-                .first()
-                .map(|s| s.trim().to_string())
-                .unwrap_or_else(|| format!("Node: {}", node_meta.name));
+            let category = node_meta.category.clone();
+            let description = format!("{} ({})", node_meta.name, node_meta.category);
 
             let static_def = NodeDefinition {
                 id: id.clone(),
-                name: node_meta.name.to_string(),
+                name: node_meta.name.clone(),
                 icon: "⚙️".to_string(), // Default icon
-                description,
-                documentation,
+                description: description.clone(),
+                documentation: description,
                 inputs,
                 outputs,
                 properties: std::collections::HashMap::new(),
-                color: node_meta.color.map(|s| s.to_string()),
+                color: None,
             };
 
             categories_map

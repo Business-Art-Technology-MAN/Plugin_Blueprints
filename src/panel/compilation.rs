@@ -4,11 +4,99 @@ use gpui::*;
 use super::core::BlueprintEditorPanel;
 use ui::compiler;
 
+// Convert a pulsar_graph DataType into the graphy DataType the compiler expects.
+fn to_graphy_datatype(dt: &ui::graph::DataType) -> graphy::DataType {
+    use ui::graph::DataType as PG;
+    use graphy::DataType as GD;
+    match dt {
+        PG::Execution          => GD::Execution,
+        PG::Typed(ti)          => GD::Typed(graphy::core::TypeInfo::new(ti.to_string())),
+        PG::Any                => GD::Any,
+        PG::String             => GD::String,
+        PG::Number             => GD::Number,
+        PG::Boolean            => GD::Boolean,
+        PG::Vector2            => GD::Vector2,
+        PG::Vector3            => GD::Vector3,
+        PG::Color              => GD::Color,
+        PG::Object             => GD::Typed(graphy::core::TypeInfo::new("Object")),
+        PG::Array(inner)       => GD::Typed(graphy::core::TypeInfo::new(
+            format!("Vec<{}>", inner)
+        )),
+    }
+}
+
 impl BlueprintEditorPanel {
+    /// Build a `graphy::GraphDescription` directly from the current BlueprintGraph.
+    /// This is the single source-of-truth conversion; both compile functions use it.
+    fn build_graphy_description(&self) -> Result<graphy::GraphDescription, String> {
+        use graphy::{GraphDescription, NodeInstance,
+                     PinInstance, Pin, PinType, ConnectionType, PropertyValue, Position};
+        use graphy::Connection as GConnection;
+
+        let mut graph = GraphDescription::new("Blueprint Graph");
+
+        // Nodes
+        for bp_node in &self.graph.nodes {
+            let mut node = NodeInstance {
+                id:         bp_node.id.clone(),
+                node_type:  bp_node.definition_id.clone(),
+                position:   Position { x: bp_node.position.x as f64, y: bp_node.position.y as f64 },
+                inputs:     Vec::new(),
+                outputs:    Vec::new(),
+                properties: bp_node.properties.iter()
+                    .map(|(k, v)| (k.clone(), PropertyValue::String(v.clone())))
+                    .collect(),
+            };
+
+            for pin in &bp_node.inputs {
+                node.inputs.push(PinInstance {
+                    id:  pin.id.clone(),
+                    pin: Pin {
+                        id:        pin.id.clone(),
+                        name:      pin.name.clone(),
+                        data_type: to_graphy_datatype(&pin.data_type),
+                        pin_type:  PinType::Input,
+                    },
+                });
+            }
+            for pin in &bp_node.outputs {
+                node.outputs.push(PinInstance {
+                    id:  pin.id.clone(),
+                    pin: Pin {
+                        id:        pin.id.clone(),
+                        name:      pin.name.clone(),
+                        data_type: to_graphy_datatype(&pin.data_type),
+                        pin_type:  PinType::Output,
+                    },
+                });
+            }
+
+            graph.nodes.insert(bp_node.id.clone(), node);
+        }
+
+        // Connections
+        for conn in &self.graph.connections {
+            let conn_type = match conn.connection_type {
+                ui::graph::ConnectionType::Execution => ConnectionType::Execution,
+                ui::graph::ConnectionType::Data      => ConnectionType::Data,
+            };
+            graph.connections.push(GConnection {
+                source_node:     conn.source_node.clone(),
+                source_pin:      conn.source_pin.clone(),
+                target_node:     conn.target_node.clone(),
+                target_pin:      conn.target_pin.clone(),
+                connection_type: conn_type,
+            });
+        }
+
+        Ok(graph)
+    }
+
     /// Compile current graph to Rust source code
     pub fn compile_to_rust(&self) -> Result<String, String> {
-        let graph_description = self.convert_to_graph_description()?;
-        compiler::compile_graph(&graph_description)
+        let graph = self.build_graphy_description()?;
+        compiler::compile_graph(&graph)
+            .map_err(|e| format!("Compilation failed: {}", e))
     }
 
     /// Compile and save events to class directory structure
@@ -16,97 +104,53 @@ impl BlueprintEditorPanel {
         let class_path = self.current_class_path.as_ref()
             .ok_or("No class loaded - cannot compile")?;
 
-        // Save variables and generate vars module first
+        // Ensure variables are persisted first
         self.save_variables_to_class()?;
         self.generate_vars_module()?;
 
-        // Create events directory
         let events_dir = class_path.join("events");
         std::fs::create_dir_all(&events_dir)
             .map_err(|e| format!("Failed to create events directory: {}", e))?;
 
-        // Find all event nodes
-        let event_nodes: Vec<_> = self.graph.nodes.iter()
-            .filter(|node| node.node_type == super::super::NodeType::Event)
-            .collect();
-
-        if event_nodes.is_empty() {
+        let has_events = self.graph.nodes.iter()
+            .any(|n| n.node_type == super::super::NodeType::Event);
+        if !has_events {
             return Err("No event nodes found in graph".to_string());
         }
 
-        // Compile each event individually
-        let graph_description = self.convert_to_graph_description()?;
-        let metadata = compiler::node_metadata::extract_node_metadata()
-            .map_err(|e| format!("Failed to get node metadata: {}", e))?;
-
-        // Build variables HashMap
+        // Build the graphy graph and compile all events in one pass
+        let graph = self.build_graphy_description()?;
         let variables: std::collections::HashMap<String, String> = self.class_variables.iter()
             .map(|v| (v.name.clone(), v.var_type.clone()))
             .collect();
 
-        let data_resolver = compiler::data_resolver::DataResolver::build_with_variables(
-            &graph_description,
-            &metadata,
-            variables.clone(),
-        )?;
-        let exec_routing = compiler::execution_routing::ExecutionRouting::build_from_graph(
-            &graph_description,
-        );
+        let generated = compiler::compile_graph_with_variables(&graph, variables)
+            .map_err(|e| format!("Compilation failed: {}", e))?;
 
-        let mut mod_exports = Vec::new();
+        // Write all events into a single file
+        let events_file = events_dir.join("events.rs");
+        std::fs::write(&events_file, &generated)
+            .map_err(|e| format!("Failed to write events.rs: {}", e))?;
 
-        for event_node in &event_nodes {
-            let graph_event = graph_description.nodes.values()
-                .find(|n| n.id == event_node.id)
-                .ok_or(format!("Event node {} not found in graph", event_node.id))?;
-
-            let mut generator = compiler::code_generator::CodeGenerator::new(
-                &metadata,
-                &data_resolver,
-                &exec_routing,
-                &graph_description,
-                variables.clone(),
-            );
-
-            let event_code = generator.generate_event_function(graph_event)?;
-            let event_name = event_node.definition_id.to_lowercase();
-            let event_file = events_dir.join(format!("{}.rs", event_name));
-
-            std::fs::write(&event_file, &event_code)
-                .map_err(|e| format!("Failed to write {}: {}", event_file.display(), e))?;
-
-            mod_exports.push(event_name.clone());
-            tracing::info!("Compiled event '{}' to {}", event_node.title, event_file.display());
-        }
-
-        // Create mod.rs
+        // Write mod.rs that re-exports everything from events.rs
         let now = chrono::Local::now();
         let version = ui::ENGINE_VERSION;
-        let mod_header = format!(
+        let mod_content = format!(
             "//! Auto Generated by the Pulsar Blueprint Editor\n\
              //! DO NOT EDIT MANUALLY - YOUR CHANGES WILL BE OVERWRITTEN\n\
              //! Generated on {} - Engine version {}\n\
              //!\n\
-             //! This file re-exports all event modules for this class.\n\
-             //! Individual event implementations are in separate files.\n\
-             //! To modify events, open the class in the Pulsar Blueprint Editor.\n\
-             //!\n\
-             //! EDITING ANYTHING IN THIS FILE COULD BREAK THE EDITOR\n\
-             //! AND PREVENT THE GUI FROM OPENING THIS CLASS - BE CAREFUL\n\n",
+             //! To modify events, open the class in the Pulsar Blueprint Editor.\n\n\
+             pub mod events;\n\
+             pub use events::*;\n",
             now.format("%Y-%m-%d %H:%M:%S"),
             version
         );
-
-        let mod_exports_str = mod_exports.iter()
-            .map(|name| format!("pub mod {};\npub use {}::*;", name, name))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let mod_content = format!("{}{}", mod_header, mod_exports_str);
         let mod_path = events_dir.join("mod.rs");
         std::fs::write(&mod_path, mod_content)
             .map_err(|e| format!("Failed to write mod.rs: {}", e))?;
 
+        tracing::info!("Compiled blueprint events to {}", events_dir.display());
         Ok(())
     }
 

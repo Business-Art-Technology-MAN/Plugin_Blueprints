@@ -16,7 +16,6 @@
 
 use plugin_editor_api::*;
 use serde_json::json;
-use std::alloc::GlobalAlloc;
 use std::{path::PathBuf, sync::Arc};
 use std::sync::Mutex;
 use std::collections::HashMap;
@@ -49,7 +48,6 @@ pub use events::*;
 /// Storage for editor instances owned by the plugin
 struct EditorStorage {
     panel: Arc<dyn ui::dock::PanelView>,
-    wrapper: Box<BlueprintEditorWrapper>,
 }
 
 /// The Blueprint Editor Plugin
@@ -125,12 +123,9 @@ impl EditorPlugin for BlueprintEditorPlugin {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-        logger: &plugin_editor_api::EditorLogger,
-    ) -> Result<(Arc<dyn PanelView>, Box<dyn EditorInstance>), PluginError> {
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
 
-        logger.info("BP EDITOR LOADED!!!!!");
-
-        logger.info(&format!("Creating editor with ID: {}", editor_id.as_str()));
+        log::info!("Creating blueprint editor with ID: {}", editor_id.as_str());
         if editor_id.as_str() == "blueprint-editor" {
             // Clone file_path before moving into closure
             let file_path_clone = file_path.clone();
@@ -150,15 +145,6 @@ impl EditorPlugin for BlueprintEditorPlugin {
             // Wrap the panel in Arc - will be shared with main app
             let panel_arc: Arc<dyn ui::dock::PanelView> = Arc::new(panel.clone());
 
-            // Clone file_path for logging
-            let file_path_for_log = file_path.clone();
-
-            // Create the wrapper for EditorInstance
-            let wrapper = Box::new(BlueprintEditorWrapper {
-                panel: panel.into(),
-                file_path,
-            });
-
             // Generate unique ID for this editor
             let id = {
                 let mut next_id = self.next_editor_id.lock().unwrap();
@@ -167,16 +153,14 @@ impl EditorPlugin for BlueprintEditorPlugin {
                 id
             };
 
-            // CRITICAL: Store Arc and Box in plugin's HashMap to keep them alive!
+            // CRITICAL: Store Arc in plugin's HashMap to keep it alive!
             self.editors.lock().unwrap().insert(id, EditorStorage {
                 panel: panel_arc.clone(),
-                wrapper: wrapper.clone(),
             });
 
-            log::info!("Created blueprint editor instance {} for {:?}", id, file_path_for_log);
+            log::info!("Created blueprint editor instance {} for {:?}", id, file_path);
 
-            // Return Arc (main app will clone it) and Box for EditorInstance
-            Ok((panel_arc, wrapper))
+            Ok(panel_arc)
         } else {
             Err(PluginError::EditorNotFound { editor_id })
         }
@@ -206,49 +190,6 @@ impl EditorPlugin for BlueprintEditorPlugin {
 
     fn on_load(&mut self) {
         log::info!("Blueprint Editor Plugin loaded");
-    }
-
-    fn on_unload(&mut self) {
-        // Clear all editors when plugin unloads
-        let mut editors = self.editors.lock().unwrap();
-        let count = editors.len();
-        editors.clear();
-        log::info!("Blueprint Editor Plugin unloaded (cleaned up {} editors)", count);
-    }
-}
-
-/// Wrapper to bridge Entity<BlueprintEditorPanel> to EditorInstance trait
-#[derive(Clone)]
-pub struct BlueprintEditorWrapper {
-    panel: Entity<BlueprintEditorPanel>,
-    file_path: std::path::PathBuf,
-}
-
-
-
-impl plugin_editor_api::EditorInstance for BlueprintEditorWrapper {
-    fn file_path(&self) -> &std::path::PathBuf {
-        &self.file_path
-    }
-
-    fn save(&mut self, _window: &mut Window, cx: &mut App) -> Result<(), PluginError> {
-        self.panel.update(cx, |panel, _cx| {
-            panel.plugin_save()
-        })
-    }
-
-    fn reload(&mut self, _window: &mut Window, cx: &mut App) -> Result<(), PluginError> {
-        self.panel.update(cx, |panel, _cx| {
-            panel.plugin_reload()
-        })
-    }
-
-    fn is_dirty(&self) -> bool {
-        false
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 

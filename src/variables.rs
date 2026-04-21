@@ -31,10 +31,9 @@ pub struct TypeItem {
 
 impl TypeItem {
     pub fn new(type_str: String) -> Self {
-        let display_name = ui::compiler::type_extractor::get_type_display_name(&type_str);
         Self {
+            display_name: type_str.clone().into(),
             type_str: type_str.into(),
-            display_name: display_name.into(),
         }
     }
 }
@@ -303,7 +302,7 @@ impl VariablesRenderer {
                         div()
                             .text_xs()
                             .text_color(gpui::Rgba { r: pin_color.r, g: pin_color.g, b: pin_color.b, a: 1.0 })
-                            .child(ui::compiler::type_extractor::get_type_display_name(&var.var_type))
+                            .child(var.var_type.clone())
                     )
             )
             .child(

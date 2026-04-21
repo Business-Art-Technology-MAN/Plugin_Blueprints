@@ -586,7 +586,7 @@ impl PropertiesRenderer {
                             .text_xs()
                             .font_family("JetBrainsMono-Regular")
                             .text_color(cx.theme().muted_foreground)
-                            .child(ui::compiler::type_extractor::get_type_display_name(&format!("{:?}", pin.data_type)))
+                            .child(format!("{}", pin.data_type))
                     )
             )
             .child(

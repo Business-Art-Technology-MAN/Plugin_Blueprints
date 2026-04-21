@@ -70,7 +70,26 @@ impl BlueprintEditorPanel {
 
     /// Get available types
     pub fn get_available_types(&self) -> Vec<String> {
-        ui::compiler::type_extractor::extract_all_blueprint_types()
+        use graphy::NodeMetadataProvider;
+        let provider = pbgc::BlueprintMetadataProvider::new();
+        let mut types: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for node in provider.get_all_nodes() {
+            for param in &node.params {
+                let t = &param.param_type;
+                if !t.is_empty() && t != "()" {
+                    types.insert(t.clone());
+                }
+            }
+        }
+        let mut result: Vec<String> = types.into_iter().collect();
+        result.sort();
+        // Ensure common primitive types are always available
+        for t in &["bool", "f32", "f64", "i32", "i64", "String"] {
+            if !result.contains(&t.to_string()) {
+                result.push(t.to_string());
+            }
+        }
+        result
     }
 
     /// Add input pin to subgraph
