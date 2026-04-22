@@ -1029,10 +1029,18 @@ impl NodeGraphRenderer {
         const PIN_SIZE: f32  = 12.0;
 
         let label_color = style::label_color();
+        let corner_r = style::corner_radius(z);
         let max_rows = node.inputs.len().max(node.outputs.len());
 
         div()
             .w_full()
+            .corner_radii(gpui::Corners {
+                top_left: px(0.0),
+                top_right: px(0.0),
+                bottom_right: corner_r,
+                bottom_left: corner_r,
+            })
+            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.08, a: 1.0 })
             .px(px(BODY_PAD * z))
             .pt(px(BODY_PAD * z))
             .pb(px(BODY_PAD * z))
