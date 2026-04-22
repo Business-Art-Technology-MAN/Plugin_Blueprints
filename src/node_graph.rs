@@ -749,6 +749,12 @@ impl NodeGraphRenderer {
                     .h(px(HEADER_H * z))
                     .relative()
                     .overflow_hidden()
+                    .corner_radii(gpui::Corners {
+                        top_left: corner_r,
+                        top_right: corner_r,
+                        bottom_right: px(0.0),
+                        bottom_left: px(0.0),
+                    })
                     .bg(title_bg)
                     .child(
                         div()
