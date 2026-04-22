@@ -10,7 +10,9 @@ impl BlueprintEditorPanel {
     pub fn initialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // Create workspace if it doesn't exist
         if self.workspace.is_none() {
-            let workspace = cx.entity(|cx| ui::workspace::Workspace::new(window, cx));
+            let workspace = cx.new(|cx| {
+                ui::workspace::Workspace::new("blueprint-editor-workspace", window, cx)
+            });
             self.workspace = Some(workspace);
         }
     }
