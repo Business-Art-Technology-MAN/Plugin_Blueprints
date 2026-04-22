@@ -723,16 +723,7 @@ impl NodeGraphRenderer {
         let scaled_width = node.size.width * panel.graph.zoom_level;
         let scaled_height = node.size.height * panel.graph.zoom_level;
 
-        // Look up the full description from NodeDefinitions by node title
-        // This ensures we get the complete markdown documentation
-        let node_definitions = super::NodeDefinitions::load();
-        let tooltip_content = if let Some(def) = node_definitions.get_node_definition_by_name(&node.title) {
-            def.description.clone()
-        } else if !node.description.is_empty() {
-            node.description.clone()
-        } else {
-            "No description available.".to_string()
-        };
+        let z = panel.graph.zoom_level;
 
         div()
             .absolute()
@@ -741,173 +732,158 @@ impl NodeGraphRenderer {
             .w(px(scaled_width))
             .h(px(scaled_height))
             .child(
-                v_flex()
-                    // Use a softer node panel background and more subtle border
-                    .bg(cx.theme().muted.opacity(0.06))
+                // Visual shell: dark charcoal, strong border, deep shadow
+                div()
+                    .size_full()
+                    .rounded(px(8.0 * z))
+                    .overflow_hidden()
+                    .cursor_pointer()
+                    .when(is_dragging, |s| s.opacity(0.92))
                     .border_color(if node.is_selected {
                         gpui::yellow()
                     } else {
-                        cx.theme().border.opacity(0.25)
+                        gpui::hsla(0.0, 0.0, 0.30, 1.0)
                     })
-                    .when(node.is_selected, |style| {
-                        style.border_3() // Thicker border for selected nodes
-                            .shadow_2xl()
-                    })
-                    .when(!node.is_selected, |style| {
-                        style.border_1()
-                    })
-                    .rounded(px(10.0 * panel.graph.zoom_level))
-                    .shadow_md()
-                    .when(is_dragging, |style| style.opacity(0.95).shadow_2xl())
-                    .relative()
-                    .overflow_hidden()
-                    .cursor_pointer()
+                    .when(node.is_selected, |s| s.border_2().shadow_2xl())
+                    .when(!node.is_selected, |s| s.border_1().shadow_xl())
                     .child(
-                        // Header - draggable area with muted color accent
                         h_flex()
-                            .w_full()
-                            .p(px(10.0 * panel.graph.zoom_level))
-                            .relative()
-                            .bg(node_color.opacity(0.10))
-                            .border_b_1()
-                            .border_color(node_color.opacity(0.18))
-                            .items_center()
-                            .gap(px(10.0 * panel.graph.zoom_level))
-                            .id(ElementId::Name(format!("node-header-{}", node.id).into()))
+                            .size_full()
+                            // Left category color accent bar
                             .child(
                                 div()
-                                    .text_size(px(18.0 * panel.graph.zoom_level))
-                                    .child(node.icon.clone()),
+                                    .w(px(4.0 * z))
+                                    .flex_shrink_0()
+                                    .bg(node_color)
                             )
+                            // Node content: header + pins body
                             .child(
-                                div()
-                                    .text_size(px(14.0 * panel.graph.zoom_level))
-                                    .font_semibold()
-                                    .text_color(cx.theme().foreground)
-                                    .child(node.title.clone()),
+                                v_flex()
+                                    .flex_1()
+                                    .bg(gpui::hsla(0.0, 0.0, 0.095, 1.0))
+                                    .overflow_hidden()
+                                    .child(
+                                        // Header — draggable, category-tinted
+                                        h_flex()
+                                            .w_full()
+                                            .px(px(10.0 * z))
+                                            .py(px(8.0 * z))
+                                            .bg(node_color.opacity(0.30))
+                                            .border_b_1()
+                                            .border_color(node_color.opacity(0.55))
+                                            .items_center()
+                                            .gap(px(8.0 * z))
+                                            .id(ElementId::Name(format!("node-header-{}", node.id).into()))
+                                            .child(
+                                                div()
+                                                    .text_size(px(16.0 * z))
+                                                    .child(node.icon.clone()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(13.0 * z))
+                                                    .font_semibold()
+                                                    .text_color(gpui::white())
+                                                    .child(node.title.clone()),
+                                            )
+                                            .when(node.definition_id.starts_with("subgraph:"), |style| {
+                                                style.child(
+                                                    div()
+                                                        .px(px(5.0 * z))
+                                                        .py(px(2.0 * z))
+                                                        .rounded(px(3.0 * z))
+                                                        .bg(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 0.3 })
+                                                        .border_1()
+                                                        .border_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
+                                                        .text_xs()
+                                                        .text_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
+                                                        .child("MACRO")
+                                                )
+                                            })
+                                            .on_mouse_down(gpui::MouseButton::Left, {
+                                                let node_id = node_id.clone();
+                                                let node_definition_id = node.definition_id.clone();
+                                                let node_title = node.title.clone();
+                                                cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
+                                                    cx.stop_propagation();
+                                                    panel.focus_handle().focus(window);
+
+                                                    let now = std::time::Instant::now();
+                                                    let is_subgraph_node = node_definition_id.starts_with("subgraph:");
+                                                    let should_open_subgraph = if is_subgraph_node {
+                                                        if let Some(last_click) = panel.last_click_time {
+                                                            if now.duration_since(last_click).as_millis() < 500 {
+                                                                if let Some(last_pos) = panel.last_click_pos {
+                                                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                                                    let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                                                    let distance = ((current_pos.x - last_pos.x).powi(2) + (current_pos.y - last_pos.y).powi(2)).sqrt();
+                                                                    distance < 10.0 && panel.last_click_time.is_some()
+                                                                } else {
+                                                                    false
+                                                                }
+                                                            } else {
+                                                                false
+                                                            }
+                                                        } else {
+                                                            false
+                                                        }
+                                                    } else {
+                                                        false
+                                                    };
+
+                                                    if should_open_subgraph {
+                                                        let subgraph_id = node_definition_id.strip_prefix("subgraph:").unwrap_or(&node_definition_id).to_string();
+                                                        if let Some(library_id) = panel.get_macro_library_id(&subgraph_id) {
+                                                            let library_name = panel.library_manager.get_libraries()
+                                                                .get(&library_id)
+                                                                .map(|lib| lib.name.clone())
+                                                                .unwrap_or_else(|| library_id.clone());
+                                                            panel.request_open_engine_library(
+                                                                library_id,
+                                                                library_name,
+                                                                Some(subgraph_id.clone()),
+                                                                Some(node_title.clone()),
+                                                                cx
+                                                            );
+                                                        } else {
+                                                            if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
+                                                                panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
+                                                            } else {
+                                                                tracing::info!("⚠️ Macro '{}' not found", node_title);
+                                                            }
+                                                        }
+                                                        panel.last_click_time = None;
+                                                        panel.last_click_pos = None;
+                                                    } else {
+                                                        if !panel.graph.selected_nodes.contains(&node_id) {
+                                                            panel.select_node(Some(node_id.clone()), cx);
+                                                        }
+                                                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
+                                                        let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
+                                                        panel.start_drag(node_id.clone(), graph_pos, cx);
+                                                        let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                                        panel.last_click_time = Some(now);
+                                                        panel.last_click_pos = Some(current_pos);
+                                                    }
+                                                })
+                                            }),
+                                    )
+                                    .child(
+                                        // Pins body
+                                        v_flex()
+                                            .px(px(8.0 * z))
+                                            .py(px(7.0 * z))
+                                            .gap(px(5.0 * z))
+                                            .bg(gpui::hsla(0.0, 0.0, 0.075, 1.0))
+                                            .child(Self::render_node_pins(node, panel, cx)),
+                                    )
                             )
-                            // Macro indicator badge
-                            .when(node.definition_id.starts_with("subgraph:"), |style| {
-                                style.child(
-                                    div()
-                                        .px(px(6.0 * panel.graph.zoom_level))
-                                        .py(px(2.0 * panel.graph.zoom_level))
-                                        .rounded(px(4.0 * panel.graph.zoom_level))
-                                        .bg(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 0.3 })
-                                        .border_1()
-                                        .border_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
-                                        .text_xs()
-                                        .text_color(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 1.0 })
-                                        .child("MACRO")
-                                )
-                            })
-                            // Tooltip removed - use node picker for documentation
-                            .on_mouse_down(gpui::MouseButton::Left, {
-                                let node_id = node_id.clone();
-                                let node_definition_id = node.definition_id.clone();
-                                let node_title = node.title.clone();
-                                cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
-                                    // Stop event propagation to prevent main graph handler from firing
-                                    cx.stop_propagation();
-
-                                    // Ensure graph has focus for keyboard events
-                                    panel.focus_handle().focus(window);
-
-                                    // Check for double-click on sub-graph nodes
-                                    let now = std::time::Instant::now();
-                                    let is_subgraph_node = node_definition_id.starts_with("subgraph:");
-                                    let should_open_subgraph = if is_subgraph_node {
-                                        if let Some(last_click) = panel.last_click_time {
-                                            if now.duration_since(last_click).as_millis() < 500 {
-                                                if let Some(last_pos) = panel.last_click_pos {
-                                                    let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                                                    let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
-                                                    let distance = ((current_pos.x - last_pos.x).powi(2) + (current_pos.y - last_pos.y).powi(2)).sqrt();
-                                                    distance < 10.0 && panel.last_click_time.is_some()
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                false
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                    } else {
-                                        false
-                                    };
-
-                                    if should_open_subgraph {
-                                        // Extract sub-graph ID from definition_id (format: "subgraph:library_id.subgraph_id")
-                                        let subgraph_id = node_definition_id.strip_prefix("subgraph:").unwrap_or(&node_definition_id).to_string();
-
-                                        // Smart navigation: check if it's an engine macro or local
-                                        if let Some(library_id) = panel.get_macro_library_id(&subgraph_id) {
-                                            // It's an engine macro - request to open in library context
-                                            let library_name = panel.library_manager.get_libraries()
-                                                .get(&library_id)
-                                                .map(|lib| lib.name.clone())
-                                                .unwrap_or_else(|| library_id.clone());
-                                            
-                                            panel.request_open_engine_library(
-                                                library_id,
-                                                library_name,
-                                                Some(subgraph_id.clone()),
-                                                Some(node_title.clone()),
-                                                cx
-                                            );
-                                        } else {
-                                            // Local macro - open in current blueprint
-                                            if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
-                                                panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
-                                            } else {
-                                                tracing::info!("⚠️ Macro '{}' not found", node_title);
-                                            }
-                                        }
-                                        
-                                        // Clear click tracking
-                                        panel.last_click_time = None;
-                                        panel.last_click_pos = None;
-                                    } else {
-                                        // Only change selection if this node is not already selected
-                                        // This allows dragging multiple selected nodes
-                                        if !panel.graph.selected_nodes.contains(&node_id) {
-                                            panel.select_node(Some(node_id.clone()), cx);
-                                        }
-
-                                        // Start dragging
-                                        // Convert to element coordinates first
-                                        let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                                        let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
-                                        panel.start_drag(node_id.clone(), graph_pos, cx);
-
-                                        // Update click tracking for next potential double-click
-                                        let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
-                                        panel.last_click_time = Some(now);
-                                        panel.last_click_pos = Some(current_pos);
-                                    }
-                                })
-                            }),
-                    )
-                    .child(
-                        // Pins body with enhanced styling
-                        v_flex()
-                            .p(px(10.0 * panel.graph.zoom_level))
-                            .gap(px(6.0 * panel.graph.zoom_level))
-                            // Add subtle background tint to body
-                            .bg(cx.theme().muted.opacity(0.03))
-                            .child(Self::render_node_pins(node, panel, cx)),
                     )
                     .on_mouse_down(gpui::MouseButton::Left, {
                         let node_id = node_id.clone();
                         cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
-                            // Stop event propagation to prevent main graph handler from firing
                             cx.stop_propagation();
-
-                            // Ensure graph has focus for keyboard events
                             panel.focus_handle().focus(window);
-
-                            // Only change selection if this node is not already selected
                             if !panel.graph.selected_nodes.contains(&node_id) {
                                 panel.select_node(Some(node_id.clone()), cx);
                             }
@@ -1140,7 +1116,7 @@ impl NodeGraphRenderer {
             false
         };
 
-        let pin_size = 12.0 * panel.graph.zoom_level;
+        let pin_size = 13.0 * panel.graph.zoom_level;
 
         // Create tooltip showing the Rust type
         let type_string = pin.data_type.rust_type_string();
@@ -1153,19 +1129,15 @@ impl NodeGraphRenderer {
             .size(px(pin_size))
             .bg(pin_color)
             .rounded_full()
-            // Enhanced pin border with better depth
             .border_2()
             .border_color(if is_compatible {
-                cx.theme().accent
+                gpui::white()
             } else {
-                cx.theme().border.opacity(0.6) // Subtle border for depth
+                gpui::hsla(0.0, 0.0, 0.0, 0.55)
             })
-            .when(is_compatible, |style| style.border_3().shadow_lg())
+            .when(is_compatible, |style| style.shadow_lg())
             .cursor_pointer()
-            // Enhanced hover with glow effect
             .hover(|style| style.shadow_md())
-            // Add subtle inner highlight for 3D effect
-            .shadow_sm()
             .when(!is_input, |div| {
                 // Only output pins can start connections
                 let pin_id = pin.id.clone();
