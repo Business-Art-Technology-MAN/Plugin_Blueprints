@@ -738,23 +738,19 @@ impl NodeGraphRenderer {
             l: (node_color.l * 0.65).clamp(0.14, 0.44),
             a: 1.0,
         };
-        // Header gradient: very subtle — barely-there lightness shift top→bottom
-        let header_top = gpui::Hsla {
+        // Header gradient: diagonal top-left → bottom-right.
+        // Top-left: the base category color.
+        // Bottom-right: noticeably darker — gives the characteristic UE shadow pocket.
+        let header_br = gpui::Hsla {
             h: title_bg.h,
-            s: title_bg.s,
-            l: (title_bg.l + 0.04).min(1.0),
-            a: 1.0,
-        };
-        let header_bottom = gpui::Hsla {
-            h: title_bg.h,
-            s: title_bg.s,
-            l: (title_bg.l - 0.03).max(0.0),
+            s: (title_bg.s * 1.08).min(1.0),
+            l: (title_bg.l * 0.62).max(0.04),
             a: 1.0,
         };
         let header_grad = gpui::linear_gradient(
-            180.0,
-            gpui::linear_color_stop(header_top, 0.0),
-            gpui::linear_color_stop(header_bottom, 1.0),
+            135.0,  // top-left → bottom-right
+            gpui::linear_color_stop(title_bg, 0.0),
+            gpui::linear_color_stop(header_br, 1.0),
         );
         // Selection: bright white border (UE style)
         let sel_border  = gpui::white();
@@ -809,7 +805,12 @@ impl NodeGraphRenderer {
                                     .child(node.icon.clone()),
                             )
                             .child(
+                                // Dark backing behind the title text — second darker region
                                 div()
+                                    .px(px(5.0 * z))
+                                    .py(px(1.5 * z))
+                                    .rounded(px(3.0 * z))
+                                    .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.28 })
                                     .text_size(px(14.0 * z))
                                     .font_semibold()
                                     .text_color(gpui::white())
