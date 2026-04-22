@@ -5,16 +5,10 @@
 //! - Coordinate conversion utilities
 //! - Viewport culling/virtualization helpers
 //! Main graph canvas renderer - orchestrates all rendering features
-use ui::ActiveTheme;
-use ui::PixelsExt;
-use ui::StyledExt;
-use ui::Sizable;
-
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui::prelude::*;
-use ui::{Colorize, PixelsExt};
-use ui::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
+use ui::{Colorize, PixelsExt, ActiveTheme, button::{Button, ButtonVariants}, h_flex, v_flex, IconName, Sizable, StyledExt, tooltip::Tooltip};
 
 use crate::rendering::{layout, style};
 use crate::editor::panel::BlueprintEditorPanel;

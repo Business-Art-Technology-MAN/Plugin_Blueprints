@@ -1,15 +1,15 @@
 //! Variable list rendering
-use ui::ActiveTheme;
-use ui::PixelsExt;
-use ui::StyledExt;
-use ui::Sizable;
-
 use gpui::*;
 use ui::{
+    ActiveTheme,
+    PixelsExt,
+    StyledExt,
+    Sizable,
     button::{Button, ButtonVariants as _},
     dropdown::Dropdown,
     h_flex, v_flex,
-    ActiveTheme as _, StyledExt, IconName, Colorize,
+    IconName,
+    Colorize,
 };
 use crate::editor::panel::BlueprintEditorPanel;
 use super::types::ClassVariable;

@@ -6,13 +6,8 @@
 //! - Graph controls (zoom level, etc.)
 
 //! Overlay rendering - debug info, selection box, viewport bounds
-use ui::ActiveTheme;
-use ui::PixelsExt;
-use ui::StyledExt;
-use ui::Sizable;
-use ui::button::ButtonVariants;
 use gpui::*;
-use ui::{ActiveTheme, h_flex, v_flex, button::Button, IconName, StyledExt};
+use ui::{ActiveTheme, PixelsExt, StyledExt, Sizable, button::{Button, ButtonVariants}, h_flex, v_flex, IconName};
 use crate::editor::panel::BlueprintEditorPanel;
 use super::graph::NodeGraphRenderer;
 
