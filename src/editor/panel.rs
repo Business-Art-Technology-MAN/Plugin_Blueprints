@@ -1122,7 +1122,7 @@ impl BlueprintEditorPanel {
             self.current_class_path = Some(parent.to_path_buf());
             let _ = self.load_local_macros(parent);
             let _ = self.restore_tabs_state(parent, window, cx);
-            let _ = crate::features::variables::operations::BlueprintEditorPanel::load_variables_from_class(self, parent);
+            let _ = self.load_variables_from_class(parent);
         }
 
         tracing::info!("📂 Loaded blueprint in legacy format");

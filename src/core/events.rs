@@ -64,3 +64,10 @@ pub struct OpenEngineLibraryRequest {
     pub macro_id: Option<String>, // If specified, open this macro after opening library
     pub macro_name: Option<String>,
 }
+
+/// Event for requesting to show the node picker at a specific graph position.
+/// Used for communication between the editor and the global command palette.
+#[derive(Clone, Debug)]
+pub struct ShowNodePickerRequest {
+    pub graph_position: Point<f32>,
+}
