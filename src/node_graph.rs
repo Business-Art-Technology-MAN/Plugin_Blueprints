@@ -1267,6 +1267,7 @@ impl NodeGraphRenderer {
         )
         .absolute()
         .inset_0()
+        .size_full()
     }
 
     fn build_connection_shape(
@@ -1352,19 +1353,49 @@ impl NodeGraphRenderer {
     ) {
         let distance = (to_pos.x - from_pos.x).abs();
         let control_offset = (distance * 0.4).max(50.0).min(150.0);
-        let control1 = gpui::point(gpui::px(from_pos.x + control_offset), gpui::px(from_pos.y));
-        let control2 = gpui::point(gpui::px(to_pos.x - control_offset), gpui::px(to_pos.y));
+        let control1 = Point::new(from_pos.x + control_offset, from_pos.y);
+        let control2 = Point::new(to_pos.x - control_offset, to_pos.y);
+        let thickness = 3.5_f32;
+        let segments = ((distance / 18.0).ceil() as usize).clamp(24, 64);
 
-        let mut builder = gpui::PathBuilder::stroke(gpui::px(3.5));
-        builder.move_to(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)));
-        builder.cubic_bezier_to(
-            gpui::point(gpui::px(to_pos.x), gpui::px(to_pos.y)),
-            control1,
-            control2,
-        );
+        let mut previous_point = from_pos;
+        for index in 1..=segments {
+            let t = index as f32 / segments as f32;
+            let current_point = Self::bezier_point(from_pos, control1, control2, to_pos, t);
 
-        if let Ok(path) = builder.build() {
-            window.paint_path(path, color);
+            let dx = current_point.x - previous_point.x;
+            let dy = current_point.y - previous_point.y;
+            let len = (dx * dx + dy * dy).sqrt();
+
+            if len > 0.1 {
+                let px_offset = -dy / len * thickness / 2.0;
+                let py_offset = dx / len * thickness / 2.0;
+
+                let mut builder = gpui::PathBuilder::fill();
+                builder.move_to(gpui::point(
+                    gpui::px(previous_point.x + px_offset),
+                    gpui::px(previous_point.y + py_offset),
+                ));
+                builder.line_to(gpui::point(
+                    gpui::px(current_point.x + px_offset),
+                    gpui::px(current_point.y + py_offset),
+                ));
+                builder.line_to(gpui::point(
+                    gpui::px(current_point.x - px_offset),
+                    gpui::px(current_point.y - py_offset),
+                ));
+                builder.line_to(gpui::point(
+                    gpui::px(previous_point.x - px_offset),
+                    gpui::px(previous_point.y - py_offset),
+                ));
+                builder.close();
+
+                if let Ok(path) = builder.build() {
+                    window.paint_path(path, color);
+                }
+            }
+
+            previous_point = current_point;
         }
     }
 
