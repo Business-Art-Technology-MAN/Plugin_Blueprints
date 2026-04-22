@@ -1,4 +1,6 @@
 //! Overlay rendering - debug info, selection box, viewport bounds
+use ui::ActiveTheme;
+use ui::PixelsExt;
 //!
 //! This module contains overlay elements that render on top of the main graph:
 //! - Selection box during drag-select operations

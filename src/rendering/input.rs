@@ -1,4 +1,6 @@
 //! Input event handling for the graph canvas
+use ui::ActiveTheme;
+use ui::PixelsExt;
 //!
 //! This module provides input event handlers that can be attached to the graph
 //! canvas div. It delegates to appropriate feature operation modules based on

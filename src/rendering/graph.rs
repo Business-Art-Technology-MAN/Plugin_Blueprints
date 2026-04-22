@@ -1,4 +1,6 @@
 //! Main graph canvas renderer - orchestrates all rendering features
+use ui::ActiveTheme;
+use ui::PixelsExt;
 //!
 //! This module is responsible for:
 //! - Main render() method that composes all feature renderers

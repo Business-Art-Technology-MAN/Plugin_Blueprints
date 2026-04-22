@@ -1,4 +1,6 @@
 //! Node rendering - visual representation of blueprint nodes
+use ui::ActiveTheme;
+use ui::PixelsExt;
 //!
 //! This module handles rendering of individual nodes including:
 //! - Node boxes with headers and bodies

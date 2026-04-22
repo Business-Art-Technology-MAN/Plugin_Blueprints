@@ -12,6 +12,7 @@
 use gpui::*;
 use crate::core::BlueprintGraph;
 use crate::editor::panel::BlueprintEditorPanel;
+use ui::PixelsExt;
 
 // ============================================================================
 // Window ↔ Element Coordinate Conversions
