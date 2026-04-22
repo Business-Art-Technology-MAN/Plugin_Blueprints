@@ -1241,6 +1241,8 @@ impl NodeGraphRenderer {
             .as_ref()
             .and_then(|drag| Self::build_dragging_connection_shape(drag, panel, cx));
 
+        let zoom_level = panel.graph.zoom_level;
+
         gpui::canvas(
             move |_bounds, _window, _cx| {},
             move |bounds, _prepaint_state, window, _cx| {
@@ -1253,6 +1255,7 @@ impl NodeGraphRenderer {
                         Point::new(from.x + offset_x, from.y + offset_y),
                         Point::new(to.x + offset_x, to.y + offset_y),
                         *color,
+                        zoom_level,
                     );
                 }
                 if let Some((from, to, color)) = &dragging_shape {
@@ -1261,6 +1264,7 @@ impl NodeGraphRenderer {
                         Point::new(from.x + offset_x, from.y + offset_y),
                         Point::new(to.x + offset_x, to.y + offset_y),
                         *color,
+                        zoom_level,
                     );
                 }
             },
@@ -1350,12 +1354,13 @@ impl NodeGraphRenderer {
         from_pos: Point<f32>,
         to_pos: Point<f32>,
         color: gpui::Hsla,
+        zoom: f32,
     ) {
         let distance = (to_pos.x - from_pos.x).abs();
         let control_offset = (distance * 0.4).max(50.0).min(150.0);
         let control1 = Point::new(from_pos.x + control_offset, from_pos.y);
         let control2 = Point::new(to_pos.x - control_offset, to_pos.y);
-        let thickness = 3.5_f32;
+        let thickness = 3.5_f32 * zoom;
         let segments = ((distance / 18.0).ceil() as usize).clamp(24, 64);
 
         let mut previous_point = from_pos;
