@@ -1,6 +1,8 @@
 //! Connection rendering - bezier curves and visual presentation
 use ui::ActiveTheme;
 use ui::PixelsExt;
+use ui::StyledExt;
+use ui::Sizable;
 
 use gpui::*;
 use crate::editor::panel::BlueprintEditorPanel;

@@ -1,6 +1,3 @@
-//! Node rendering - visual representation of blueprint nodes
-use ui::ActiveTheme;
-use ui::PixelsExt;
 //!
 //! This module handles rendering of individual nodes including:
 //! - Node boxes with headers and bodies
@@ -9,6 +6,11 @@ use ui::PixelsExt;
 //! - Selection highlighting
 //! - Reroute nodes
 
+//! Node rendering - visual representation of blueprint nodes
+use ui::ActiveTheme;
+use ui::PixelsExt;
+use ui::StyledExt;
+use ui::Sizable;
 use gpui::*;
 use gpui::prelude::*;
 use ui::tooltip::Tooltip;

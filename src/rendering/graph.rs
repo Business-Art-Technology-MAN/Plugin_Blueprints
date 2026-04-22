@@ -1,12 +1,14 @@
-//! Main graph canvas renderer - orchestrates all rendering features
-use ui::ActiveTheme;
-use ui::PixelsExt;
 //!
 //! This module is responsible for:
 //! - Main render() method that composes all feature renderers
 //! - Grid background rendering
 //! - Coordinate conversion utilities
 //! - Viewport culling/virtualization helpers
+//! Main graph canvas renderer - orchestrates all rendering features
+use ui::ActiveTheme;
+use ui::PixelsExt;
+use ui::StyledExt;
+use ui::Sizable;
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;

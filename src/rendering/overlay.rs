@@ -1,6 +1,3 @@
-//! Overlay rendering - debug info, selection box, viewport bounds
-use ui::ActiveTheme;
-use ui::PixelsExt;
 //!
 //! This module contains overlay elements that render on top of the main graph:
 //! - Selection box during drag-select operations
@@ -8,6 +5,12 @@ use ui::PixelsExt;
 //! - Viewport bounds visualization for development
 //! - Graph controls (zoom level, etc.)
 
+//! Overlay rendering - debug info, selection box, viewport bounds
+use ui::ActiveTheme;
+use ui::PixelsExt;
+use ui::StyledExt;
+use ui::Sizable;
+use ui::button::ButtonVariants;
 use gpui::*;
 use ui::{ActiveTheme, h_flex, v_flex, button::Button, IconName, StyledExt};
 use crate::editor::panel::BlueprintEditorPanel;

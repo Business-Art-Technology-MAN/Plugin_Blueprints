@@ -1,11 +1,13 @@
-//! Input event handling for the graph canvas
-use ui::ActiveTheme;
-use ui::PixelsExt;
 //!
 //! This module provides input event handlers that can be attached to the graph
 //! canvas div. It delegates to appropriate feature operation modules based on
 //! what's being interacted with.
+//! Input event handling for the graph canvas
 
+use ui::ActiveTheme;
+use ui::PixelsExt;
+use ui::StyledExt;
+use ui::Sizable;
 use gpui::*;
 use crate::editor::panel::BlueprintEditorPanel;
 use super::graph::NodeGraphRenderer;

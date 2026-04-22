@@ -1,6 +1,3 @@
-//! Comment rendering - visual representation of comment boxes
-use ui::ActiveTheme;
-use ui::PixelsExt;
 //!
 //! This module handles all comment rendering including:
 //! - Comment boxes with background color and border
@@ -8,8 +5,10 @@ use ui::PixelsExt;
 //! - Resize handles (8-directional)
 //! - Color picker integration for customization
 //! - Selection highlighting
+//! Comment rendering - visual representation of comment boxes
 
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use crate::core::types::BlueprintComment;
 use super::operations::ResizeHandle;
 

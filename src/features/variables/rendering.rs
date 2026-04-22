@@ -1,6 +1,8 @@
 //! Variable list rendering
 use ui::ActiveTheme;
 use ui::PixelsExt;
+use ui::StyledExt;
+use ui::Sizable;
 
 use gpui::*;
 use ui::{
