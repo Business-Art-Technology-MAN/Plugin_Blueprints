@@ -1034,13 +1034,13 @@ impl NodeGraphRenderer {
 
         div()
             .w_full()
+            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.08, a: 1.0 })
             .corner_radii(gpui::Corners {
                 top_left: px(0.0),
                 top_right: px(0.0),
                 bottom_right: corner_r,
                 bottom_left: corner_r,
             })
-            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.08, a: 1.0 })
             .px(px(BODY_PAD * z))
             .pt(px(BODY_PAD * z))
             .pb(px(BODY_PAD * z))
