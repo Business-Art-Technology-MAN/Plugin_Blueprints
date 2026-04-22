@@ -36,6 +36,7 @@ mod minimap;
 mod hoverable_tooltip;
 mod node_palette;
 mod node_library;
+mod node_rendering;
 
 // Panel module (main editor implementation)
 pub mod panel;

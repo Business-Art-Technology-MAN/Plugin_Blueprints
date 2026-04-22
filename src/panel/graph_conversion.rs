@@ -2,6 +2,7 @@
 
 use gpui::*;
 use super::core::BlueprintEditorPanel;
+use crate::node_rendering::layout;
 use super::super::{BlueprintGraph, BlueprintNode, BlueprintComment, Connection, Pin, PinType, NodeType, NodeDefinitions};
 use ui::graph::{self as graph_types, GraphDescription, NodeInstance, PropertyValue, Position};
 
@@ -154,8 +155,7 @@ impl BlueprintEditorPanel {
                 position: Point::new(node_instance.position.x, node_instance.position.y),
                 size: {
                     let max_pins = node_instance.inputs.len().max(node_instance.outputs.len());
-                    let pin_rows = max_pins.max(1) as f32;
-                    let height = 44.0 + pin_rows * 16.0 + ((pin_rows - 1.0).max(0.0)) * 4.0;
+                    let height = layout::node_height_for_pin_rows(max_pins);
                     Size::new(240.0, height)
                 },
                 inputs: node_instance.inputs.iter().map(|pin_inst| {

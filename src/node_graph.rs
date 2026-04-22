@@ -4,6 +4,7 @@ use gpui::prelude::*;
 use ui::{Colorize, PixelsExt};
 use ui::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
 
+use crate::node_rendering::{layout, style};
 use super::panel::BlueprintEditorPanel;
 use super::{BlueprintNode, BlueprintGraph, Pin, NodeType, Connection};
 use ui::graph::DataType;
@@ -729,36 +730,18 @@ impl NodeGraphRenderer {
         let z = panel.graph.zoom_level;
 
         // ── UE Blueprint node colors ─────────────────────────────────────
-        // Body: near-black with a very slight cool tint (matches UE's dark node body)
-        let body_bg    = gpui::Hsla { h: 0.61, s: 0.05, l: 0.06, a: 0.97 };
-        // Title bar: rich, saturated, darkened category color – full opacity
-        let title_bg   = gpui::Hsla {
-            h: node_color.h,
-            s: (node_color.s * 0.90).min(1.0),
-            l: (node_color.l * 0.65).clamp(0.14, 0.44),
-            a: 1.0,
-        };
+        let body_bg = style::body_bg();
+        let title_bg = style::title_bg(node_color);
         // Selection: bright white border (UE style)
         let sel_border  = gpui::white();
         // Idle: very dark barely-visible border
-        let idle_border = gpui::Hsla { h: 0.0, s: 0.0, l: 0.22, a: 1.0 };
+        let idle_border = style::idle_border();
         // Consistent corner radius used for both outer container and header
-        let corner_r    = px(7.0 * z);
-        // Transparent stop for the shadow overlay gradient
-        let transparent = gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.0 };
-        let shadow_dark  = gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.50 };
-        let header_shadow_grad = gpui::linear_gradient(
-            135.0,
-            gpui::linear_color_stop(transparent, 0.0),
-            gpui::linear_color_stop(shadow_dark, 1.0),
-        );
+        let corner_r = style::corner_radius(z);
+        let header_shadow_grad = style::header_shadow_gradient();
 
         // ── Layout constants (keep in sync with calculate_pin_position) ──
-        // HEADER_H = header_py*2 + max(icon_h=12, title_pill_h=14+3) = 10+17 = 27
-        // SEP_H    = 1  separator
-        // BODY_PAD = 8  px() AND py() of the pin body container
-        // PIN_ROW_H= 16 fixed row height
-        // PIN_GAP  = 4  gap between rows
+        // HEADER_H = 27, SEP_H = 1, BODY_PAD = 8, PIN_ROW_H = 16, PIN_GAP = 4
         // All values are unscaled (multiply by z before using).
 
         div()
@@ -782,12 +765,12 @@ impl NodeGraphRenderer {
                     .when(is_dragging, |s| s.opacity(0.92).shadow_2xl())
                     .relative()
                     .cursor_pointer()
-                    // ── Title bar: flat category color base, with dark overlay for bottom-right shadow pocket ──
+                    // ── Title bar: separate fixed-height cap to avoid corner artifacts ──
                     .child(
                         div()
                             .w_full()
+                            .h(px(layout::HEADER_H * z))
                             .relative()
-                            .rounded(corner_r)
                             .overflow_hidden()
                             .bg(title_bg)
                             // Dark shadow overlay: transparent top-left → dark bottom-right
@@ -802,8 +785,8 @@ impl NodeGraphRenderer {
                             .child(
                                 h_flex()
                                     .w_full()
+                                    .h_full()
                                     .px(px(10.0 * z))
-                                    .py(px(5.0 * z))
                                     .items_center()
                                     .gap(px(6.0 * z))
                                     .id(ElementId::Name(format!("node-header-{}", node.id).into()))
@@ -819,7 +802,7 @@ impl NodeGraphRenderer {
                                             .px(px(5.0 * z))
                                             .py(px(1.5 * z))
                                             .rounded(px(3.0 * z))
-                                            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.30 })
+                                            .bg(style::title_pill_bg())
                                             .text_size(px(14.0 * z))
                                             .font_semibold()
                                             .text_color(gpui::white())
@@ -894,13 +877,14 @@ impl NodeGraphRenderer {
                     // ── Separator: dark line with a subtle colored tint ───────────
                     .child(
                         div().w_full().h(px(1.0 * z))
-                            .bg(gpui::Hsla { h: node_color.h, s: 0.15, l: 0.10, a: 1.0 })
+                            .bg(style::separator_bg())
                     )
                     // ── Pin body ──────────────────────────────────────
                     .child(
                         v_flex()
                             .px(px(8.0 * z))
                             .py(px(8.0 * z))
+                            .bg(body_bg)
                             .gap(px(4.0 * z))
                             .child(Self::render_node_pins(node, panel, cx)),
                     )
@@ -1063,13 +1047,13 @@ impl NodeGraphRenderer {
     ) -> impl IntoElement {
         let max_pins = std::cmp::max(node.inputs.len(), node.outputs.len());
         let z = panel.graph.zoom_level;
-        let label_color = gpui::Hsla { h: 0.0, s: 0.0, l: 0.86, a: 1.0 };
+        let label_color = style::label_color();
 
         v_flex()
             .gap(px(4.0 * z))
             .children((0..max_pins).map(|i| {
                 h_flex()
-                    .h(px(Self::PIN_ROW_H * z))
+                    .h(px(layout::PIN_ROW_H * z))
                     .items_center()
                     // ── left: input pin + label ──
                     .child(
@@ -1081,7 +1065,7 @@ impl NodeGraphRenderer {
                                     Self::render_pin(input_pin, true, &node.id, panel, cx)
                                         .into_any_element()
                                 } else {
-                                    div().w(px(Self::PIN_SIZE * z)).h(px(Self::PIN_SIZE * z)).into_any_element()
+                                    div().w(px(layout::PIN_SIZE * z)).h(px(layout::PIN_SIZE * z)).into_any_element()
                                 },
                             )
                             .child(
@@ -1118,7 +1102,7 @@ impl NodeGraphRenderer {
                                     Self::render_pin(output_pin, false, &node.id, panel, cx)
                                         .into_any_element()
                                 } else {
-                                    div().w(px(Self::PIN_SIZE * z)).h(px(Self::PIN_SIZE * z)).into_any_element()
+                                    div().w(px(layout::PIN_SIZE * z)).h(px(layout::PIN_SIZE * z)).into_any_element()
                                 },
                             )
                     )
@@ -1148,7 +1132,7 @@ impl NodeGraphRenderer {
 
         let is_exec = pin.data_type == DataType::Execution;
         let z = panel.graph.zoom_level;
-        let sz = Self::PIN_SIZE * z;
+        let sz = layout::PIN_SIZE * z;
 
         let type_string = pin.data_type.rust_type_string();
         let tooltip_text: &'static str = Box::leak(type_string.into_boxed_str());
@@ -1505,75 +1489,13 @@ impl NodeGraphRenderer {
         gpui::Hsla::from(rgba)
     }
 
-    // ── Shared layout constants (unscaled px) ─────────────────────
-    // These MUST match the values used in render_blueprint_node / render_node_pins.
-    //   title_bar  = py(6)*2 + line_height(~14) = 26
-    //   separator  = 1
-    //   body_pad_y = 8   (top padding of pin area)
-    //   pin row    = PIN_ROW_H (16)  with PIN_GAP (4) between rows
-    //   pin_size   = PIN_SIZE (12)  – the circle / exec-arrow size
-    const HEADER_H: f32  = 27.0;   // header_py(5)*2 + max(icon=12, title_pill=17) = 27
-    const SEP_H: f32     = 1.0;    // separator line height
-    const BODY_PAD: f32  = 8.0;    // px() AND py() of the pin body container
-    const PIN_ROW_H: f32 = 16.0;   // each pin row's fixed height
-    const PIN_GAP: f32   = 4.0;    // gap between pin rows
-    const PIN_SIZE: f32  = 12.0;   // pin circle / arrow size
-    const HEADER_PY: f32 = 5.0;    // header h_flex py (top = bottom)
-
     fn calculate_pin_position(
         node: &BlueprintNode,
         pin_id: &str,
         is_input: bool,
         graph: &BlueprintGraph,
     ) -> Option<Point<f32>> {
-        if node.node_type == NodeType::Reroute {
-            let p = Self::graph_to_screen_pos(node.position, graph);
-            return Some(Point::new(p.x, p.y));
-        }
-
-        let z = graph.zoom_level;
-        let nsp = Self::graph_to_screen_pos(node.position, graph);
-
-        // ── Row index ────────────────────────────────────────────────────────
-        // Each row i renders input[i] on the left and output[i] on the right.
-        // Rows are always PIN_ROW_H tall (fixed), with PIN_GAP between them.
-        let row = if is_input {
-            node.inputs.iter().position(|p| p.id == pin_id)?
-        } else {
-            node.outputs.iter().position(|p| p.id == pin_id)?
-        };
-
-        // ── Y: walk down to the vertical center of the target row ─────────────
-        //
-        //  ┌─────────────────────────────┐  ← nsp.y
-        //  │  HEADER_H                   │    header (title bar)
-        //  ├─────────────────────────────┤
-        //  │  SEP_H                      │    separator
-        //  ├─────────────────────────────┤
-        //  │  BODY_PAD (top py)          │    pin area top padding
-        //  │  ┌───────┐  ─ PIN_ROW_H/2  │  ← row 0 center  (row == 0)
-        //  │  └───────┘                  │
-        //  │  PIN_GAP                    │
-        //  │  ┌───────┐  ─ PIN_ROW_H/2  │  ← row 1 center  (row == 1)
-        //  │  └───────┘                  │
-        //  │  …                          │
-        //  │  BODY_PAD (bot py)          │
-        //  └─────────────────────────────┘
-        let pin_y = nsp.y
-            + (Self::HEADER_H + Self::SEP_H + Self::BODY_PAD) * z
-            + row as f32 * (Self::PIN_ROW_H + Self::PIN_GAP) * z
-            + Self::PIN_ROW_H * 0.5 * z;
-
-        // ── X: pin circles are inset BODY_PAD from each node edge ────────────
-        //  Input  circles sit on the LEFT  → wire attaches at their left  edge
-        //  Output circles sit on the RIGHT → wire attaches at their right edge
-        let pin_x = if is_input {
-            nsp.x + Self::BODY_PAD * z
-        } else {
-            nsp.x + (node.size.width - Self::BODY_PAD) * z
-        };
-
-        Some(Point::new(pin_x, pin_y))
+        layout::calculate_pin_anchor(node, pin_id, is_input, graph)
     }
 
     fn render_bezier_connection(
