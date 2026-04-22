@@ -1,10 +1,8 @@
-use crate::blueprint_types::{BlueprintNode, NodeType, Pin, DataType};
+use crate::blueprint_types::{BlueprintNode, NodeType, Pin};
 use crate::node_graph::NodeGraphRenderer;
 use crate::panel::BlueprintEditorPanel;
-use crate::node_rendering::layout;
-use crate::node_rendering::style;
-use gpui::{prelude::*, Context, AnyElement, ElementId};
-use gpui::Point;
+use gpui::{prelude::*, Context, AnyElement};
+use super::style;
 
 impl NodeGraphRenderer {
     /// Renders a blueprint node with header, separator, and pin rows.
