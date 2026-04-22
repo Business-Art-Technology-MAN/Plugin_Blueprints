@@ -10,7 +10,10 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use crate::core::types::BlueprintComment;
+use crate::editor::panel::BlueprintEditorPanel;
+use crate::rendering::graph::NodeGraphRenderer;
 use super::operations::ResizeHandle;
+use ui::Colorize;
 
 /// Comment rendering methods
 ///
@@ -28,22 +31,26 @@ use super::operations::ResizeHandle;
 ///
 /// # Returns
 /// An element containing all rendered comments
-pub fn render_comments<V>(
-    panel: &mut V,
-    cx: &mut Context<V>,
-) -> impl IntoElement
-where
-    V: 'static,
-{
-    // Note: This is a placeholder that will be completed when BlueprintEditorPanel is migrated.
-    // The actual implementation requires access to panel.graph.comments and selection state.
+pub fn render_all(
+    panel: &mut BlueprintEditorPanel,
+    cx: &mut Context<BlueprintEditorPanel>,
+) -> impl IntoElement {
+    let visible_comments: Vec<BlueprintComment> = panel
+        .graph
+        .comments
+        .iter()
+        .map(|comment| {
+            let mut comment = comment.clone();
+            comment.is_selected = panel.graph.selected_comments.contains(&comment.id);
+            comment
+        })
+        .collect();
 
-    div().absolute().inset_0()
-        .child(
-            div()
-                .size_full()
-                // Children will be individual comment elements
-        )
+    div().absolute().inset_0().children(
+        visible_comments
+            .into_iter()
+            .map(|comment| render_comment(&comment, panel, cx)),
+    )
 }
 
 /// Render a single comment box
@@ -62,19 +69,163 @@ where
 ///
 /// # Returns
 /// An element representing the comment box
-pub fn render_comment<V>(
+pub fn render_comment(
     comment: &BlueprintComment,
-    panel: &V,
-    cx: &mut Context<V>,
-) -> AnyElement
-where
-    V: 'static,
-{
-    // Note: This is a placeholder. The full implementation is provided below as reference.
+    panel: &mut BlueprintEditorPanel,
+    cx: &mut Context<BlueprintEditorPanel>,
+) -> AnyElement {
+    let graph_pos = NodeGraphRenderer::graph_to_screen_pos(comment.position, &panel.graph);
+    let comment_id = comment.id.clone();
+    let is_dragging = panel.dragging_comment.as_ref() == Some(&comment.id);
+    let is_resizing = panel.resizing_comment.as_ref().map(|(id, _)| id) == Some(&comment.id);
+
+    let scaled_width = comment.size.width * panel.graph.zoom_level;
+    let scaled_height = comment.size.height * panel.graph.zoom_level;
+    let resize_handle_size = 12.0 * panel.graph.zoom_level;
 
     div()
         .absolute()
-        .child(div().child("Comment"))
+        .left(px(graph_pos.x))
+        .top(px(graph_pos.y))
+        .w(px(scaled_width))
+        .h(px(scaled_height))
+        .child(
+            div()
+                .size_full()
+                .bg(comment.color)
+                .border_2()
+                .border_color(if comment.is_selected {
+                    gpui::yellow()
+                } else {
+                    comment.color.lighten(0.2)
+                })
+                .rounded(px(8.0 * panel.graph.zoom_level))
+                .when(is_dragging || is_resizing, |style| style.opacity(0.8))
+                .shadow_md()
+                .overflow_hidden()
+                .child({
+                    let is_editing = panel.editing_comment.as_ref() == Some(&comment.id);
+
+                    if is_editing {
+                        div()
+                            .p(px(12.0 * panel.graph.zoom_level))
+                            .size_full()
+                            .font_family("JetBrainsMono-Regular")
+                            .font_weight(gpui::FontWeight::default())
+                            .child(ui::input::TextInput::new(&panel.comment_text_input))
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(
+                                |_panel, _event: &MouseDownEvent, _window, cx| {
+                                    cx.stop_propagation();
+                                },
+                            ))
+                            .on_mouse_move(cx.listener(
+                                |_panel, _event: &MouseMoveEvent, _window, cx| {
+                                    cx.stop_propagation();
+                                },
+                            ))
+                            .into_any_element()
+                    } else {
+                        div()
+                            .p(px(12.0 * panel.graph.zoom_level))
+                            .size_full()
+                            .text_size(px(14.0 * panel.graph.zoom_level))
+                            .text_color(gpui::white())
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(comment.text.clone())
+                            .on_mouse_down(gpui::MouseButton::Left, {
+                                let comment_id = comment_id.clone();
+                                cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
+                                    cx.stop_propagation();
+
+                                    if !panel.graph.selected_comments.contains(&comment_id) {
+                                        panel.graph.selected_comments.clear();
+                                        panel.graph.selected_comments.push(comment_id.clone());
+                                    }
+
+                                    let now = std::time::Instant::now();
+                                    let should_edit = if let Some(last_click) = panel.last_click_time {
+                                        if now.duration_since(last_click).as_millis() < 500 {
+                                            if let Some(last_pos) = panel.last_click_pos {
+                                                let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+                                                let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                                let distance = ((current_pos.x - last_pos.x).powi(2)
+                                                    + (current_pos.y - last_pos.y).powi(2))
+                                                .sqrt();
+                                                distance < 10.0
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    };
+
+                                    if should_edit {
+                                        panel.editing_comment = Some(comment_id.clone());
+                                        if let Some(comment) = panel.graph.comments.iter().find(|c| c.id == comment_id) {
+                                            panel.comment_text_input.update(cx, |state, cx| {
+                                                state.set_value(comment.text.clone(), window, cx);
+                                            });
+                                        }
+                                        panel.last_click_time = None;
+                                    } else {
+                                        let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+                                        let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+
+                                        if let Some(comment) = panel.graph.comments.iter().find(|c| c.id == comment_id) {
+                                            panel.dragging_comment = Some(comment_id.clone());
+                                            panel.drag_offset = Point::new(
+                                                graph_pos.x - comment.position.x,
+                                                graph_pos.y - comment.position.y,
+                                            );
+                                        }
+
+                                        let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+                                        panel.last_click_time = Some(now);
+                                        panel.last_click_pos = Some(current_pos);
+                                    }
+
+                                    cx.notify();
+                                })
+                            })
+                            .into_any_element()
+                    }
+                })
+                .children([
+                    render_resize_handle(ResizeHandle::TopLeft, &comment_id, resize_handle_size, panel, cx),
+                    render_resize_handle(ResizeHandle::TopRight, &comment_id, resize_handle_size, panel, cx),
+                    render_resize_handle(ResizeHandle::BottomLeft, &comment_id, resize_handle_size, panel, cx),
+                    render_resize_handle(ResizeHandle::BottomRight, &comment_id, resize_handle_size, panel, cx),
+                    render_resize_handle(ResizeHandle::Top, &comment_id, resize_handle_size, panel, cx),
+                    render_resize_handle(ResizeHandle::Bottom, &comment_id, resize_handle_size, panel, cx),
+                    render_resize_handle(ResizeHandle::Left, &comment_id, resize_handle_size, panel, cx),
+                    render_resize_handle(ResizeHandle::Right, &comment_id, resize_handle_size, panel, cx),
+                ])
+                .when(comment.is_selected, |this| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .top(px(8.0 * panel.graph.zoom_level))
+                            .right(px(8.0 * panel.graph.zoom_level))
+                            .child(
+                                ui::color_picker::ColorPicker::new(
+                                    comment
+                                        .color_picker_state
+                                        .as_ref()
+                                        .expect("color picker state"),
+                                )
+                                .size(ui::Size::Small),
+                            )
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(
+                                |_panel, _event: &MouseDownEvent, _window, cx| {
+                                    cx.stop_propagation();
+                                },
+                            )),
+                    )
+                }),
+        )
         .into_any_element()
 }
 
@@ -94,16 +245,13 @@ where
 ///
 /// # Returns
 /// An element representing the resize handle
-pub fn render_resize_handle<V>(
+pub fn render_resize_handle(
     handle: ResizeHandle,
     comment_id: &str,
     size: f32,
-    panel: &V,
-    cx: &mut Context<V>,
-) -> impl IntoElement
-where
-    V: 'static,
-{
+    panel: &BlueprintEditorPanel,
+    cx: &mut Context<BlueprintEditorPanel>,
+) -> impl IntoElement {
     let (left, top, cursor) = match handle {
         ResizeHandle::TopLeft => (Some(px(0.0)), Some(px(0.0)), CursorStyle::ResizeUpLeftDownRight),
         ResizeHandle::TopRight => (None, Some(px(0.0)), CursorStyle::ResizeUpRightDownLeft),
@@ -115,7 +263,7 @@ where
         ResizeHandle::Right => (None, None, CursorStyle::ResizeLeftRight),
     };
 
-    let _comment_id = comment_id.to_string();
+    let comment_id = comment_id.to_string();
 
     div()
         .absolute()
@@ -134,7 +282,18 @@ where
         })
         .bg(gpui::transparent_black())
         .cursor(cursor)
-        // Note: Mouse handlers will be added when BlueprintEditorPanel is migrated
+        .on_mouse_down(gpui::MouseButton::Left, {
+            cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                cx.stop_propagation();
+
+                let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+                let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+
+                panel.resizing_comment = Some((comment_id.clone(), handle.clone()));
+                panel.drag_offset = graph_pos;
+                cx.notify();
+            })
+        })
 }
 
 // ============================================================================
