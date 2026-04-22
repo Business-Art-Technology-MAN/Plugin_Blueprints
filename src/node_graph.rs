@@ -1248,20 +1248,20 @@ impl NodeGraphRenderer {
                 let offset_y = bounds.origin.y.as_f32();
 
                 for (from, to, color) in &connection_shapes {
-                    let path = Self::build_bezier_path(
+                    Self::paint_bezier_line(
+                        window,
                         Point::new(from.x + offset_x, from.y + offset_y),
                         Point::new(to.x + offset_x, to.y + offset_y),
-                        3.5,
+                        *color,
                     );
-                    window.paint_path(path, *color);
                 }
                 if let Some((from, to, color)) = &dragging_shape {
-                    let path = Self::build_bezier_path(
+                    Self::paint_bezier_line(
+                        window,
                         Point::new(from.x + offset_x, from.y + offset_y),
                         Point::new(to.x + offset_x, to.y + offset_y),
-                        3.5,
+                        *color,
                     );
-                    window.paint_path(path, *color);
                 }
             },
         )
@@ -1344,32 +1344,28 @@ impl NodeGraphRenderer {
         }
     }
 
-    fn build_bezier_path(
+    fn paint_bezier_line(
+        window: &mut gpui::Window,
         from_pos: Point<f32>,
         to_pos: Point<f32>,
-        thickness: f32,
-    ) -> gpui::Path<gpui::Pixels> {
+        color: gpui::Hsla,
+    ) {
         let distance = (to_pos.x - from_pos.x).abs();
         let control_offset = (distance * 0.4).max(50.0).min(150.0);
-        let control1 = gpui::point(gpui::px(from_pos.x + control_offset), gpui::px(from_pos.y));
-        let control2 = gpui::point(gpui::px(to_pos.x - control_offset), gpui::px(to_pos.y));
+        let control1 = Point::new(from_pos.x + control_offset, from_pos.y);
+        let control2 = Point::new(to_pos.x - control_offset, to_pos.y);
 
-        let mut builder = gpui::PathBuilder::stroke(gpui::px(thickness));
-        builder.move_to(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)));
-        builder.cubic_bezier_to(
-            gpui::point(gpui::px(to_pos.x), gpui::px(to_pos.y)),
-            control1,
-            control2,
-        );
+        let segments = 28;
+        let dot_size = 5.0;
+        let dot_half = dot_size / 2.0;
 
-        builder.build().unwrap_or_else(|_| {
-            let mut fallback = gpui::PathBuilder::stroke(gpui::px(thickness));
-            fallback.move_to(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)));
-            fallback.line_to(gpui::point(gpui::px(to_pos.x), gpui::px(to_pos.y)));
-            fallback.build().unwrap_or_else(|_| {
-                gpui::Path::new(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)))
-            })
-        })
+        for i in 0..=segments {
+            let t = i as f32 / segments as f32;
+            let point = Self::bezier_point(from_pos, control1, control2, to_pos, t);
+            let origin = gpui::point(gpui::px(point.x - dot_half), gpui::px(point.y - dot_half));
+            let size = gpui::size(gpui::px(dot_size), gpui::px(dot_size));
+            window.paint_quad(gpui::fill(gpui::Bounds { origin, size }, color));
+        }
     }
 
     fn get_pin_color(data_type: &DataType, _cx: &mut Context<BlueprintEditorPanel>) -> gpui::Hsla {
