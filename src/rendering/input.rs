@@ -93,7 +93,8 @@ pub fn on_mouse_down_left(
                 panel.start_selection_drag(graph_pos, event.modifiers.control, cx);
             }
         }
-    })
+        });
+    }
 }
 
 /// Create mouse move handler for the graph canvas
