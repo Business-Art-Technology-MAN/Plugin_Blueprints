@@ -38,6 +38,7 @@ pub struct BlueprintEditorPanel {
     pub dragging_node: Option<String>,
     pub drag_offset: Point<f32>,
     pub initial_drag_positions: HashMap<String, Point<f32>>,
+    pub node_clipboard: Option<BlueprintNode>,
 
     // Connection drag state
     pub dragging_connection: Option<ConnectionDrag>,
@@ -233,6 +234,7 @@ impl BlueprintEditorPanel {
             dragging_node: None,
             drag_offset: Point::new(0.0, 0.0),
             initial_drag_positions: HashMap::new(),
+            node_clipboard: None,
             dragging_connection: None,
             is_panning: false,
             pan_start: Point::new(0.0, 0.0),

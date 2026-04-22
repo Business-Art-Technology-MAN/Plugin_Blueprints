@@ -4,7 +4,7 @@
 
 use gpui::*;
 use crate::editor::panel::BlueprintEditorPanel;
-use crate::core::types::{BlueprintNode, NodeType};
+use crate::core::types::BlueprintNode;
 
 impl BlueprintEditorPanel {
     /// Add a node to the graph
@@ -42,17 +42,32 @@ impl BlueprintEditorPanel {
         cx.notify();
     }
 
-    /// Copy node (placeholder)
+    /// Copy node into the in-memory clipboard
     pub fn copy_node(&mut self, node_id: String, _cx: &mut Context<Self>) {
-        if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
+        if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id).cloned() {
             tracing::info!("Copied node: {}", node.title);
-            // TODO: Store in clipboard
+            self.node_clipboard = Some(node);
+        } else {
+            tracing::warn!("Copy failed: node not found ({})", node_id);
         }
     }
 
-    /// Paste node (placeholder)
+    /// Paste node from the in-memory clipboard
     pub fn paste_node(&mut self, cx: &mut Context<Self>) {
-        tracing::info!("Paste node not yet implemented");
+        if let Some(mut node) = self.node_clipboard.clone() {
+            node.id = uuid::Uuid::new_v4().to_string();
+            node.position.x += 30.0;
+            node.position.y += 30.0;
+            node.is_selected = false;
+            self.graph.nodes.push(node);
+
+            if let Some(tab) = self.open_tabs.get_mut(self.active_tab_index) {
+                tab.is_dirty = true;
+            }
+            tracing::info!("Pasted node from clipboard");
+        } else {
+            tracing::info!("Paste requested with empty clipboard");
+        }
         cx.notify();
     }
 

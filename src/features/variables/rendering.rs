@@ -104,8 +104,9 @@ impl VariablesRenderer {
                                     .ghost()
                                     .compact()
                                     .tooltip("Functions")
-                                    .on_click(cx.listener(|_panel, _, _window, _cx| {
-                                        // TODO: Switch to functions view
+                                    .on_click(cx.listener(|panel, _, _window, cx| {
+                                        panel.left_top_tab = 1;
+                                        cx.notify();
                                     }))
                             )
                             .child(
@@ -114,8 +115,9 @@ impl VariablesRenderer {
                                     .ghost()
                                     .compact()
                                     .tooltip("Macros")
-                                    .on_click(cx.listener(|_panel, _, _window, _cx| {
-                                        // TODO: Switch to macros view
+                                    .on_click(cx.listener(|panel, _, _window, cx| {
+                                        panel.left_top_tab = 2;
+                                        cx.notify();
                                     }))
                             )
                     )

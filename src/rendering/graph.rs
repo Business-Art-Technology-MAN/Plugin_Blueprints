@@ -231,27 +231,21 @@ impl NodeGraphRenderer {
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        // TODO: Delegate to features::comments::rendering::render_all
-        // For now, placeholder
-        div().absolute().inset_0()
+        crate::features::comments::rendering::render_all(panel, cx)
     }
 
     fn render_connections(
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        // TODO: Delegate to features::connections::rendering::render_all
-        // For now, placeholder
-        div().absolute().inset_0()
+        crate::features::connections::rendering::BlueprintEditorPanel::render_connections(panel, cx)
     }
 
     fn render_nodes(
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        // TODO: Delegate to features::nodes::rendering::render_all
-        // For now, placeholder
-        div().absolute().inset_0()
+        crate::features::nodes::rendering::render_all(panel, cx)
     }
 
     // ── Coordinate conversion utilities ───────────────────────────────────
