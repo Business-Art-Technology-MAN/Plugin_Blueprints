@@ -1202,7 +1202,7 @@ impl NodeGraphRenderer {
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        let mut connection_shapes: Vec<(gpui::Path<gpui::Pixels>, gpui::Hsla)> = Vec::new();
+        let mut connection_shapes: Vec<(Point<f32>, Point<f32>, gpui::Hsla)> = Vec::new();
 
         // Only render connections that connect to visible nodes
         let visible_connections: Vec<&Connection> = panel
@@ -1231,8 +1231,8 @@ impl NodeGraphRenderer {
         }
 
         for connection in visible_connections {
-            if let Some(shape) = Self::build_connection_shape(connection, panel, cx) {
-                connection_shapes.push(shape);
+            if let Some((from, to, color)) = Self::build_connection_shape(connection, panel, cx) {
+                connection_shapes.push((from, to, color));
             }
         }
 
@@ -1243,12 +1243,25 @@ impl NodeGraphRenderer {
 
         gpui::canvas(
             move |_bounds, _window, _cx| {},
-            move |_bounds, _prepaint_state, window, _cx| {
-                for (path, color) in &connection_shapes {
-                    window.paint_path(path.clone(), *color);
+            move |bounds, _prepaint_state, window, _cx| {
+                let offset_x = bounds.origin.x.as_f32();
+                let offset_y = bounds.origin.y.as_f32();
+
+                for (from, to, color) in &connection_shapes {
+                    let path = Self::build_bezier_path(
+                        Point::new(from.x + offset_x, from.y + offset_y),
+                        Point::new(to.x + offset_x, to.y + offset_y),
+                        3.5,
+                    );
+                    window.paint_path(path, *color);
                 }
-                if let Some((path, color)) = &dragging_shape {
-                    window.paint_path(path.clone(), *color);
+                if let Some((from, to, color)) = &dragging_shape {
+                    let path = Self::build_bezier_path(
+                        Point::new(from.x + offset_x, from.y + offset_y),
+                        Point::new(to.x + offset_x, to.y + offset_y),
+                        3.5,
+                    );
+                    window.paint_path(path, *color);
                 }
             },
         )
@@ -1260,7 +1273,7 @@ impl NodeGraphRenderer {
         connection: &Connection,
         panel: &BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
-    ) -> Option<(gpui::Path<gpui::Pixels>, gpui::Hsla)> {
+    ) -> Option<(Point<f32>, Point<f32>, gpui::Hsla)> {
         let from_node = panel
             .graph
             .nodes
@@ -1292,7 +1305,7 @@ impl NodeGraphRenderer {
                     cx.theme().primary
                 };
 
-                Some((Self::build_bezier_path(from_pin_pos, to_pin_pos, 3.5), pin_color))
+                Some((from_pin_pos, to_pin_pos, pin_color))
             } else {
                 None
             }
@@ -1305,7 +1318,7 @@ impl NodeGraphRenderer {
         drag: &super::panel::ConnectionDrag,
         panel: &BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
-    ) -> Option<(gpui::Path<gpui::Pixels>, gpui::Hsla)> {
+    ) -> Option<(Point<f32>, Point<f32>, gpui::Hsla)> {
         if let Some(from_node) = panel.graph.nodes.iter().find(|n| n.id == drag.source_node) {
             if let Some(from_pin_pos) =
                 Self::calculate_pin_position(from_node, &drag.source_pin, false, &panel.graph)
@@ -1322,7 +1335,7 @@ impl NodeGraphRenderer {
                     drag.current_mouse_pos
                 };
 
-                Some((Self::build_bezier_path(from_pin_pos, end_pos, 3.5), pin_color))
+                Some((from_pin_pos, end_pos, pin_color))
             } else {
                 None
             }
