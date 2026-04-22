@@ -298,6 +298,7 @@ impl BlueprintEditorPanel {
             left_bottom_tab: 0,
             right_tab: 0,
             dragging_tab: None,
+            is_dirty: false,
         }
     }
 
