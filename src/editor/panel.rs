@@ -103,6 +103,8 @@ pub struct BlueprintEditorPanel {
 
     // Tab drag state
     pub dragging_tab: Option<TabDragInfo>,
+
+    pub is_dirty: bool, // Whether there are unsaved changes
 }
 
 /// Information about a tab being dragged
