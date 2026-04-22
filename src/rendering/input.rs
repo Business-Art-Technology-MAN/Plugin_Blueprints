@@ -15,25 +15,30 @@ use super::graph::NodeGraphRenderer;
 /// Create mouse down (right button) handler for the graph canvas
 pub fn on_mouse_down_right(
     cx: &mut Context<BlueprintEditorPanel>,
-) -> impl Fn(&mut BlueprintEditorPanel, &MouseDownEvent, &mut Window, &mut Context<BlueprintEditorPanel>) {
-    cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
-        // Convert window coordinates to element coordinates
-        let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
-        let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) {
+    let entity = cx.entity().clone();
+    move |event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+        entity.update(cx, |panel, cx| {
+            // Convert window coordinates to element coordinates
+            let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+            let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
 
-        // Store right-click start position for gesture detection
-        if panel.dragging_connection.is_none() && panel.dragging_node.is_none() {
-            panel.right_click_start = Some(mouse_pos);
-            // Don't show menu immediately - wait for mouse up or movement
-        }
-    })
+            // Store right-click start position for gesture detection
+            if panel.dragging_connection.is_none() && panel.dragging_node.is_none() {
+                panel.right_click_start = Some(mouse_pos);
+                // Don't show menu immediately - wait for mouse up or movement
+            }
+        });
+    }
 }
 
 /// Create mouse down (left button) handler for the graph canvas
 pub fn on_mouse_down_left(
     cx: &mut Context<BlueprintEditorPanel>,
-) -> impl Fn(&mut BlueprintEditorPanel, &MouseDownEvent, &mut Window, &mut Context<BlueprintEditorPanel>) {
-    cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
+) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) {
+    let entity = cx.entity().clone();
+    move |event: &MouseDownEvent, _window: &mut Window, cx: &mut App| {
+        entity.update(cx, |panel, cx| {
         // Debug: Print raw event position and calculated offset
         tracing::info!("[MOUSE] Raw window position: x={}, y={}", event.position.x.as_f32(), event.position.y.as_f32());
         tracing::info!("[MOUSE] Stored element bounds: {:?}", panel.graph_element_bounds);
