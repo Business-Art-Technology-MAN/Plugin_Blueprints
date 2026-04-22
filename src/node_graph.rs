@@ -738,8 +738,26 @@ impl NodeGraphRenderer {
             l: (node_color.l * 0.65).clamp(0.14, 0.44),
             a: 1.0,
         };
-        // Highlight: subtle top-edge shimmer on the header
-        let _header_shine = gpui::Hsla { h: node_color.h, s: 0.30, l: 0.80, a: 0.12 };
+        // Header gradient: top highlight → main color → darkened bottom (UE style)
+        // Top: slightly lighter + desaturated (the sheen/highlight edge)
+        let header_top = gpui::Hsla {
+            h: title_bg.h,
+            s: (title_bg.s * 0.70).min(1.0),
+            l: (title_bg.l + 0.12).min(0.65),
+            a: 1.0,
+        };
+        // Bottom: slightly darker and more saturated (anchors the color)
+        let header_bottom = gpui::Hsla {
+            h: title_bg.h,
+            s: (title_bg.s * 1.05).min(1.0),
+            l: (title_bg.l - 0.08).max(0.05),
+            a: 1.0,
+        };
+        let header_grad = gpui::linear_gradient(
+            180.0,  // top → bottom
+            gpui::linear_color_stop(header_top, 0.0),
+            gpui::linear_color_stop(header_bottom, 1.0),
+        );
         // Selection: bright white border (UE style)
         let sel_border  = gpui::white();
         // Idle: very dark barely-visible border
@@ -781,7 +799,7 @@ impl NodeGraphRenderer {
                             .w_full()
                             .px(px(10.0 * z))
                             .py(px(8.0 * z))
-                            .bg(title_bg)
+                            .bg(header_grad)
                             .rounded(corner_r)
                             .items_center()
                             .gap(px(6.0 * z))
