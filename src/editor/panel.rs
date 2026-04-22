@@ -18,6 +18,7 @@ use crate::core::{
 };
 use ui::graph::DataType;
 use crate::features::variables::ClassVariable;
+use crate::features::connections::operations::ConnectionDrag;
 use super::tabs::GraphTab;
 use ui::graph::{DataType as GraphDataType, LibraryManager, SubGraphDefinition};
 
@@ -135,16 +136,6 @@ pub enum ResizeHandle {
     Bottom,
     Left,
     Right,
-}
-
-/// Connection drag state
-#[derive(Clone, Debug)]
-pub struct ConnectionDrag {
-    pub source_node: String,
-    pub source_pin: String,
-    pub source_pin_type: GraphDataType,
-    pub current_mouse_pos: Point<f32>,
-    pub target_pin: Option<(String, String)>,
 }
 
 impl BlueprintEditorPanel {
