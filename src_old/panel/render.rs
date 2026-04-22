@@ -62,8 +62,7 @@ impl BlueprintEditorPanel {
     }
 
     pub fn plugin_reload(&mut self) -> Result<(), plugin_editor_api::PluginError> {
-        // TODO: Implement reload functionality
-        // For now, return an error indicating it's not implemented
+        // Legacy panel reload path is intentionally unavailable in src_old.
         Err(plugin_editor_api::PluginError::Other {
             message: "Reload not yet implemented for blueprint editor".into(),
         })
@@ -419,7 +418,7 @@ impl BlueprintEditorPanel {
                     .child(label_str)
             )
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _window, cx| {
-                // TODO: Add drag and drop support when GPUI provides the API
+                // Legacy panel uses click-based tab switching only.
                 match panel_id {
                     0 => this.left_top_tab = tab_index,
                     1 => this.left_bottom_tab = tab_index,

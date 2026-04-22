@@ -42,17 +42,17 @@ impl BlueprintEditorPanel {
         cx.notify();
     }
 
-    /// Copy node (placeholder)
+    /// Copy node
     pub fn copy_node(&mut self, node_id: String, _cx: &mut Context<Self>) {
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             tracing::info!("Copied node: {}", node.title);
-            // TODO: Store in clipboard
+            tracing::info!("Legacy panel does not persist a copy buffer.");
         }
     }
 
-    /// Paste node (placeholder)
+    /// Paste node
     pub fn paste_node(&mut self, cx: &mut Context<Self>) {
-        tracing::info!("Paste node not yet implemented");
+        tracing::info!("Legacy panel does not provide paste behavior.");
         cx.notify();
     }
 

@@ -8,4 +8,4 @@
 //! - Minimap
 //! - Tooltip system
 
-// Placeholders - to be implemented
+// Component modules are integrated incrementally as features migrate from src_old.

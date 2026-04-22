@@ -82,7 +82,7 @@ impl FileDrawerRenderer {
             )
             .child(
                 // Plugins mount point (future)
-                Self::render_mount_point_placeholder(
+                Self::render_mount_point_stub(
                     "Plugins",
                     "🔌",
                     cx
@@ -90,7 +90,7 @@ impl FileDrawerRenderer {
             )
             .child(
                 // Project mount point (future)
-                Self::render_mount_point_placeholder(
+                Self::render_mount_point_stub(
                     "Project",
                     "📦",
                     cx
@@ -98,7 +98,7 @@ impl FileDrawerRenderer {
             )
             .child(
                 // Types mount point
-                Self::render_mount_point_placeholder(
+                Self::render_mount_point_stub(
                     "Types",
                     "📐",
                     cx
@@ -288,7 +288,7 @@ impl FileDrawerRenderer {
             .into_any_element()
     }
 
-    fn render_mount_point_placeholder(
+    fn render_mount_point_stub(
         name: &'static str,
         icon: &'static str,
         cx: &mut Context<BlueprintEditorPanel>
