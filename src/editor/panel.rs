@@ -1071,7 +1071,8 @@ impl BlueprintEditorPanel {
             pub a: f32,
         }
 
-        let legacy_graph: LegacyGraphDescription = serde_json::from_str(json)?;
+        let legacy_graph: LegacyGraphDescription = serde_json::from_str(json)
+            .map_err(|e| format!("Failed to parse legacy format: {}", e))?;
 
         tracing::info!("📂 ✓ Legacy format parsed successfully");
 
