@@ -118,7 +118,7 @@ impl BlueprintEditorPanel {
             .map(|(i, v)| ui::graph::ClassVariable {
                 id: format!("var_{}", i),
                 name: v.name.clone(),
-                data_type: ui::graph::DataType::parse(&v.var_type),
+                data_type: ui::graph::DataType::from_type_str(&v.var_type),
                 default_value: v.default_value.clone(),
                 description: String::new(),
             })
