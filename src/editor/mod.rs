@@ -4,6 +4,7 @@
 //! for the blueprint editor, along with workspace, tabs, and toolbar.
 
 pub mod panel;
+pub mod panel_render;
 pub mod workspace;
 pub mod tabs;
 pub mod toolbar;
