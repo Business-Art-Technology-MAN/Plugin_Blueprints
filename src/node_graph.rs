@@ -738,26 +738,20 @@ impl NodeGraphRenderer {
             l: (node_color.l * 0.65).clamp(0.14, 0.44),
             a: 1.0,
         };
-        // Header gradient: diagonal top-left → bottom-right.
-        // Top-left: the base category color.
-        // Bottom-right: noticeably darker — gives the characteristic UE shadow pocket.
-        let header_br = gpui::Hsla {
-            h: title_bg.h,
-            s: (title_bg.s * 1.08).min(1.0),
-            l: (title_bg.l * 0.62).max(0.04),
-            a: 1.0,
-        };
-        let header_grad = gpui::linear_gradient(
-            135.0,  // top-left → bottom-right
-            gpui::linear_color_stop(title_bg, 0.0),
-            gpui::linear_color_stop(header_br, 1.0),
-        );
         // Selection: bright white border (UE style)
         let sel_border  = gpui::white();
         // Idle: very dark barely-visible border
         let idle_border = gpui::Hsla { h: 0.0, s: 0.0, l: 0.22, a: 1.0 };
         // Consistent corner radius used for both outer container and header
         let corner_r    = px(7.0 * z);
+        // Transparent stop for the shadow overlay gradient
+        let transparent = gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.0 };
+        let shadow_dark  = gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.50 };
+        let header_shadow_grad = gpui::linear_gradient(
+            135.0,
+            gpui::linear_color_stop(transparent, 0.0),
+            gpui::linear_color_stop(shadow_dark, 1.0),
+        );
 
         // ── Layout constants (keep in sync with calculate_pin_position) ──
         // HEADER_H = title_pad_y*2 + content_line = 6+6 + 16 = 28  (unscaled)
@@ -787,35 +781,49 @@ impl NodeGraphRenderer {
                     .when(is_dragging, |s| s.opacity(0.92).shadow_2xl())
                     .relative()
                     .cursor_pointer()
-                    // ── Title bar (rounded same as outer so corners are always clean) ──
+                    // ── Title bar: flat category color base, with dark overlay for bottom-right shadow pocket ──
                     .child(
-                        h_flex()
+                        div()
                             .w_full()
-                            .px(px(10.0 * z))
-                            .py(px(8.0 * z))
-                            .bg(header_grad)
+                            .relative()
                             .rounded(corner_r)
-                            .items_center()
-                            .gap(px(6.0 * z))
-                            .id(ElementId::Name(format!("node-header-{}", node.id).into()))
+                            .overflow_hidden()
+                            .bg(title_bg)
+                            // Dark shadow overlay: transparent top-left → dark bottom-right
+                            // This is rendered first, content row renders on top
                             .child(
                                 div()
-                                    .text_size(px(12.0 * z))
-                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.92, a: 1.0 })
-                                    .child(node.icon.clone()),
+                                    .absolute()
+                                    .inset_0()
+                                    .bg(header_shadow_grad)
                             )
+                            // Content row (above the shadow overlay)
                             .child(
-                                // Dark backing behind the title text — second darker region
-                                div()
-                                    .px(px(5.0 * z))
-                                    .py(px(1.5 * z))
-                                    .rounded(px(3.0 * z))
-                                    .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.28 })
-                                    .text_size(px(14.0 * z))
-                                    .font_semibold()
-                                    .text_color(gpui::white())
-                                    .child(node.title.clone()),
-                            )
+                                h_flex()
+                                    .w_full()
+                                    .px(px(10.0 * z))
+                                    .py(px(8.0 * z))
+                                    .items_center()
+                                    .gap(px(6.0 * z))
+                                    .id(ElementId::Name(format!("node-header-{}", node.id).into()))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0 * z))
+                                            .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.92, a: 1.0 })
+                                            .child(node.icon.clone()),
+                                    )
+                                    .child(
+                                        // Dark backing behind the title text — second dark region
+                                        div()
+                                            .px(px(5.0 * z))
+                                            .py(px(1.5 * z))
+                                            .rounded(px(3.0 * z))
+                                            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.30 })
+                                            .text_size(px(14.0 * z))
+                                            .font_semibold()
+                                            .text_color(gpui::white())
+                                            .child(node.title.clone()),
+                                    )
                             .when(node.definition_id.starts_with("subgraph:"), |s| {
                                 s.child(
                                     div()
