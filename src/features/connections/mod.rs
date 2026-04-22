@@ -1,1 +1,15 @@
-//! Placeholder module
+//! Connection management feature module
+//!
+//! This module handles all connection-related functionality including:
+//! - Connection dragging and creation
+//! - Connection rendering with bezier curves
+//! - Type compatibility checking
+//! - Reroute node type inference
+
+pub mod operations;
+pub mod rendering;
+pub mod compatibility;
+
+pub use operations::*;
+pub use rendering::*;
+pub use compatibility::*;
