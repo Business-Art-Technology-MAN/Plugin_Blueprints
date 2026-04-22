@@ -839,4 +839,416 @@ impl BlueprintEditorPanel {
             graph_position: graph_pos,
         });
     }
+
+    // ============================================================================
+    // File I/O Operations
+    // ============================================================================
+
+    /// Load blueprint from file
+    pub fn load_blueprint(
+        &mut self,
+        file_path: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("📂 LOADING BLUEPRINT FROM FILE");
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("📂 File: {}", file_path);
+
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| {
+                let error_msg = format!("Failed to read file: {}", e);
+                eprintln!("❌ {}", error_msg);
+                error_msg
+            })?;
+
+        tracing::info!("📂 ✓ File read successfully ({} bytes)", content.len());
+
+        // Strip header comments
+        let json = content.lines()
+            .skip_while(|line| line.trim().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Try new unified format first
+        match serde_json::from_str::<ui::graph::BlueprintAsset>(&json) {
+            Ok(blueprint_asset) => {
+                tracing::info!("📂 ✓ Detected unified blueprint format");
+                self.load_from_blueprint_asset(blueprint_asset, file_path, window, cx)?;
+            },
+            Err(unified_err) => {
+                tracing::info!("📂 ⚠️  Unified format parse failed:");
+                tracing::info!("📂    Error: {}", unified_err);
+                tracing::info!("📂    Line: {}, Column: {}", unified_err.line(), unified_err.column());
+
+                // Show context around the error location
+                let lines: Vec<&str> = json.lines().collect();
+                let error_line = unified_err.line().saturating_sub(1);
+                if error_line < lines.len() {
+                    tracing::info!("📂    Context:");
+                    for i in error_line.saturating_sub(2)..=error_line.saturating_add(2).min(lines.len().saturating_sub(1)) {
+                        tracing::info!("📂      {}{}: {}",
+                            if i == error_line { ">>> " } else { "    " },
+                            i + 1,
+                            lines.get(i).unwrap_or(&"")
+                        );
+                    }
+                }
+
+                tracing::info!("📂 ✓ Trying legacy format...");
+
+                // Try parsing as legacy format
+                self.load_legacy_format(&json, file_path, window, cx)
+                    .map_err(|e| {
+                        let error_msg = format!("Failed to parse as both unified and legacy format.\nUnified error: {}\nLegacy error: {}", unified_err, e);
+                        eprintln!("❌ {}", error_msg);
+                        error_msg
+                    })?;
+            }
+        }
+
+        // Reload library manager
+        self.library_manager = ui::graph::LibraryManager::default();
+        if let Err(e) = self.library_manager.load_all_libraries() {
+            eprintln!("Failed to reload sub-graph libraries: {}", e);
+        }
+
+        cx.notify();
+        Ok(())
+    }
+
+    /// Load from unified blueprint asset
+    fn load_from_blueprint_asset(
+        &mut self,
+        asset: ui::graph::BlueprintAsset,
+        file_path: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let file_path_buf = std::path::Path::new(file_path);
+        if let Some(parent) = file_path_buf.parent() {
+            self.current_class_path = Some(parent.to_path_buf());
+        }
+
+        // Load main graph
+        self.graph = self.convert_graph_description_to_blueprint(&asset.main_graph, window, cx)?;
+
+        // Load local macros
+        self.local_macros = asset.local_macros;
+
+        // Load variables
+        self.class_variables = asset.variables.iter().map(|v| {
+            ClassVariable {
+                name: v.name.clone(),
+                var_type: format!("{:?}", v.data_type),
+                default_value: v.default_value.clone(),
+            }
+        }).collect();
+
+        // Restore main tab
+        self.open_tabs = vec![GraphTab {
+            id: "main".to_string(),
+            name: "EventGraph".to_string(),
+            graph: self.graph.clone(),
+            is_main: true,
+            is_dirty: false,
+            is_library_macro: false,
+            library_id: None,
+        }];
+        self.active_tab_index = 0;
+
+        // Restore editor state (open tabs, active tab, view states)
+        if let Some(editor_state) = asset.editor_state {
+            // Restore open tabs
+            for tab_id in &editor_state.open_tab_ids {
+                if tab_id == "main" {
+                    continue; // Already added
+                }
+
+                // Check if this is a local macro
+                let macro_data = self.local_macros.iter()
+                    .find(|m| &m.id == tab_id)
+                    .map(|m| (m.name.clone(), m.graph.clone()));
+
+                if let Some((macro_name, macro_graph)) = macro_data {
+                    if let Ok(mut blueprint_graph) = self.convert_graph_description_to_blueprint(&macro_graph, window, cx) {
+                        // Restore view state for this tab if available
+                        if let Some(view_state) = editor_state.graph_view_states.get(tab_id) {
+                            blueprint_graph.pan_offset = Point {
+                                x: view_state.pan_offset_x,
+                                y: view_state.pan_offset_y,
+                            };
+                            blueprint_graph.zoom_level = view_state.zoom;
+                        }
+
+                        self.open_tabs.push(GraphTab {
+                            id: tab_id.clone(),
+                            name: macro_name,
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: false,
+                            library_id: None,
+                        });
+                    }
+                }
+            }
+
+            // Restore view state for main tab
+            if let Some(view_state) = editor_state.graph_view_states.get("main") {
+                if let Some(main_tab) = self.open_tabs.iter_mut().find(|t| t.is_main) {
+                    main_tab.graph.pan_offset = Point {
+                        x: view_state.pan_offset_x,
+                        y: view_state.pan_offset_y,
+                    };
+                    main_tab.graph.zoom_level = view_state.zoom;
+                }
+
+                self.graph.pan_offset = Point {
+                    x: view_state.pan_offset_x,
+                    y: view_state.pan_offset_y,
+                };
+                self.graph.zoom_level = view_state.zoom;
+            }
+
+            // Restore active tab index (with bounds check)
+            self.active_tab_index = editor_state.active_tab_index.min(self.open_tabs.len().saturating_sub(1));
+
+            // Load the active tab's graph into self.graph
+            if let Some(active_tab) = self.open_tabs.get(self.active_tab_index) {
+                self.graph = active_tab.graph.clone();
+            }
+        }
+
+        tracing::info!("📂 Loaded unified blueprint format");
+        tracing::info!("📂   ✓ Main Graph: {} nodes", self.graph.nodes.len());
+        tracing::info!("📂   ✓ Local Macros: {}", self.local_macros.len());
+        tracing::info!("📂   ✓ Variables: {}", self.class_variables.len());
+        tracing::info!("📂   ✓ Open Tabs: {}", self.open_tabs.len());
+        tracing::info!("📂   ✓ Active Tab Index: {}", self.active_tab_index);
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+
+        Ok(())
+    }
+
+    /// Load legacy format (old format before unified blueprint)
+    fn load_legacy_format(
+        &mut self,
+        json: &str,
+        file_path: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        // Define legacy structures inline for backward compatibility
+        #[derive(serde::Deserialize)]
+        struct LegacyGraphDescription {
+            pub nodes: HashMap<String, ui::graph::NodeInstance>,
+            pub connections: Vec<ui::graph::Connection>,
+            pub metadata: ui::graph::GraphMetadata,
+            #[serde(default)]
+            pub comments: Vec<LegacyBlueprintComment>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacyBlueprintComment {
+            pub id: String,
+            pub text: String,
+            pub position: LegacyPosition,
+            pub size: LegacySize,
+            pub color: LegacyColor,
+            pub contained_node_ids: Vec<String>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacyPosition {
+            pub x: f32,
+            pub y: f32,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacySize {
+            pub width: f32,
+            pub height: f32,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacyColor {
+            pub h: f32,
+            pub s: f32,
+            pub l: f32,
+            pub a: f32,
+        }
+
+        let legacy_graph: LegacyGraphDescription = serde_json::from_str(json)?;
+
+        tracing::info!("📂 ✓ Legacy format parsed successfully");
+
+        // Convert legacy format to current format
+        let graph_description = ui::graph::GraphDescription {
+            nodes: legacy_graph.nodes,
+            connections: legacy_graph.connections,
+            metadata: legacy_graph.metadata,
+            comments: legacy_graph.comments.into_iter().map(|c| {
+                let (r, g, b) = hsl_to_rgb(c.color.h, c.color.s, c.color.l);
+                ui::graph::BlueprintComment {
+                    id: c.id,
+                    text: c.text,
+                    position: (c.position.x, c.position.y),
+                    size: (c.size.width, c.size.height),
+                    color: [r, g, b, c.color.a],
+                    contained_node_ids: c.contained_node_ids,
+                }
+            }).collect(),
+        };
+
+        self.graph = self.convert_graph_description_to_blueprint(&graph_description, window, cx)?;
+
+        // Reset to main tab
+        self.open_tabs = vec![GraphTab {
+            id: "main".to_string(),
+            name: "EventGraph".to_string(),
+            graph: self.graph.clone(),
+            is_main: true,
+            is_dirty: false,
+            is_library_macro: false,
+            library_id: None,
+        }];
+        self.active_tab_index = 0;
+
+        // Load separate legacy files
+        let file_path_buf = std::path::Path::new(file_path);
+        if let Some(parent) = file_path_buf.parent() {
+            self.current_class_path = Some(parent.to_path_buf());
+            let _ = self.load_local_macros(parent);
+            let _ = self.restore_tabs_state(parent, window, cx);
+            let _ = crate::features::variables::operations::BlueprintEditorPanel::load_variables_from_class(self, parent);
+        }
+
+        tracing::info!("📂 Loaded blueprint in legacy format");
+        Ok(())
+    }
+
+    /// Load local macros from macros.json
+    fn load_local_macros(&mut self, class_path: &std::path::Path) -> Result<(), String> {
+        let macros_file = class_path.join("macros.json");
+        if !macros_file.exists() {
+            self.local_macros.clear();
+            return Ok(());
+        }
+
+        let content = std::fs::read_to_string(&macros_file)
+            .map_err(|e| format!("Failed to read macros.json: {}", e))?;
+        let macros: Vec<ui::graph::SubGraphDefinition> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse macros.json: {}", e))?;
+
+        self.local_macros = macros;
+        tracing::info!("📂 Loaded {} local macros from macros.json", self.local_macros.len());
+        Ok(())
+    }
+
+    /// Restore tabs from tabs.json
+    fn restore_tabs_state(
+        &mut self,
+        class_path: &std::path::Path,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Result<(), String> {
+        #[derive(serde::Deserialize)]
+        struct SerializedGraphTab {
+            pub id: String,
+            pub name: String,
+            pub is_main: bool,
+            pub is_library_macro: bool,
+            pub library_id: Option<String>,
+        }
+
+        let tabs_file = class_path.join("tabs.json");
+        if !tabs_file.exists() {
+            return Ok(());
+        }
+
+        let content = std::fs::read_to_string(&tabs_file)
+            .map_err(|e| format!("Failed to read tabs.json: {}", e))?;
+        let serialized_tabs: Vec<SerializedGraphTab> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse tabs.json: {}", e))?;
+
+        self.open_tabs.retain(|tab| tab.is_main);
+        self.active_tab_index = 0;
+
+        for ser_tab in serialized_tabs {
+            if ser_tab.is_main {
+                continue;
+            }
+
+            if ser_tab.is_library_macro {
+                let macro_graph = self.library_manager.get_subgraph(&ser_tab.id)
+                    .map(|m| m.graph.clone());
+
+                if let Some(graph) = macro_graph {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph, window, cx) {
+                        self.open_tabs.push(GraphTab {
+                            id: ser_tab.id.clone(),
+                            name: ser_tab.name.clone(),
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: true,
+                            library_id: ser_tab.library_id.clone(),
+                        });
+                    }
+                }
+            } else {
+                let macro_graph = self.local_macros.iter()
+                    .find(|m| m.id == ser_tab.id)
+                    .map(|m| m.graph.clone());
+
+                if let Some(graph) = macro_graph {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph, window, cx) {
+                        self.open_tabs.push(GraphTab {
+                            id: ser_tab.id.clone(),
+                            name: ser_tab.name.clone(),
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: false,
+                            library_id: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        tracing::info!("📂 Restored {} tabs from tabs.json", self.open_tabs.len());
+        Ok(())
+    }
+}
+
+// Helper function for HSL to RGB conversion
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+    if s == 0.0 {
+        return (l, l, l);
+    }
+
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
+
+    let hue_to_rgb = |p: f32, q: f32, mut t: f32| -> f32 {
+        if t < 0.0 { t += 1.0; }
+        if t > 1.0 { t -= 1.0; }
+        if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
+        if t < 1.0 / 2.0 { return q; }
+        if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+        p
+    };
+
+    (
+        hue_to_rgb(p, q, h + 1.0 / 3.0),
+        hue_to_rgb(p, q, h),
+        hue_to_rgb(p, q, h - 1.0 / 3.0),
+    )
 }
