@@ -1,7 +1,7 @@
 //! Connection rendering - bezier curves and visual presentation
 
 use gpui::*;
-use crate::panel::BlueprintEditorPanel;
+use crate::editor::panel::BlueprintEditorPanel;
 use crate::core::types::{Connection, BlueprintNode, NodeType, Size};
 use crate::core::graph::BlueprintGraph;
 use ui::graph::DataType;

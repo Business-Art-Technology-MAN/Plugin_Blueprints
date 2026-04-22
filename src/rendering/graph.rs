@@ -13,7 +13,7 @@ use ui::{Colorize, PixelsExt};
 use ui::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme as _, IconName, Sizable, StyledExt, tooltip::Tooltip};
 
 use crate::rendering::{layout, style};
-use crate::panel::BlueprintEditorPanel;
+use crate::editor::panel::BlueprintEditorPanel;
 use crate::{BlueprintNode, BlueprintGraph, Pin, NodeType, Connection};
 use ui::graph::DataType;
 

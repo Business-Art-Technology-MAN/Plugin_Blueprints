@@ -1,8 +1,8 @@
 //! Graph conversion - Convert between BlueprintGraph and GraphDescription formats
 
 use gpui::*;
-use crate::panel::core::BlueprintEditorPanel;
-use crate::node_rendering::layout;
+use crate::editor::panel::core::BlueprintEditorPanel;
+use crate::rendering::layout;
 use crate::{BlueprintGraph, BlueprintNode, BlueprintComment, Connection, Pin, PinType, NodeType, NodeDefinitions};
 use ui::graph::{self as graph_types, GraphDescription, NodeInstance, PropertyValue, Position};
 

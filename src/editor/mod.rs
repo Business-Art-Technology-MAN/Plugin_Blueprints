@@ -9,3 +9,4 @@ pub mod tabs;
 pub mod toolbar;
 
 pub use panel::BlueprintEditorPanel;
+pub use tabs::GraphTab;

@@ -1,8 +1,8 @@
 //! Selection operations - selection box and multi-selection
 
 use gpui::*;
-use crate::editor::BlueprintEditorPanel;
-use crate::types::{BlueprintNode, Connection};
+use crate::editor::panel::BlueprintEditorPanel;
+use crate::core::types::{BlueprintNode, Connection};
 
 impl BlueprintEditorPanel {
     /// Select a single node (or clear selection if None)

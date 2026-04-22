@@ -1,7 +1,7 @@
 //! Compiler - Compile blueprints to Rust code
 
 use gpui::*;
-use crate::panel::core::{BlueprintEditorPanel, CompilationHistoryEntry};
+use crate::editor::panel::core::{BlueprintEditorPanel, CompilationHistoryEntry};
 use crate::{CompilationStatus, CompilationState};
 use ui::compiler;
 

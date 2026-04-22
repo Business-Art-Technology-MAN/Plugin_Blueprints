@@ -3,8 +3,8 @@
 //! All operations related to node manipulation in the graph.
 
 use gpui::*;
-use crate::editor::BlueprintEditorPanel;
-use crate::types::{BlueprintNode, NodeType};
+use crate::editor::panel::BlueprintEditorPanel;
+use crate::core::types::{BlueprintNode, NodeType};
 
 impl BlueprintEditorPanel {
     /// Add a node to the graph

@@ -1,8 +1,8 @@
 //! Macro operations - Opening, creating, and navigating macros
 
 use gpui::*;
-use crate::panel::core::BlueprintEditorPanel;
-use crate::panel::tabs::GraphTab;
+use crate::editor::panel::core::BlueprintEditorPanel;
+use crate::editor::panel::tabs::GraphTab;
 use crate::BlueprintGraph;
 
 impl BlueprintEditorPanel {

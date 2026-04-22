@@ -1,7 +1,7 @@
 //! Connection operations - dragging and managing connections between nodes
 
 use gpui::*;
-use crate::panel::BlueprintEditorPanel;
+use crate::editor::panel::BlueprintEditorPanel;
 use crate::core::types::{Connection, NodeType};
 use ui::graph::DataType as GraphDataType;
 

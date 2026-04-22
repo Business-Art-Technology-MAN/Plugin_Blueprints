@@ -1,4 +1,5 @@
-//! Workspace initialization and docking layout
-//! Will be migrated from src_old/panel/render_workspace.rs
+//! Workspace initialization and layout
+//!
+//! Handles setting up the docking workspace with sidebar panels
 
-// Placeholder - to be implemented
+// Placeholder - workspace integration will be completed later

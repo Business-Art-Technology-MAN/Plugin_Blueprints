@@ -1,4 +1,5 @@
 //! Toolbar rendering
-//! Will be migrated from src_old/toolbar.rs
+//!
+//! Top toolbar with compile button, file operations, etc.
 
-// Placeholder - to be implemented
+// Placeholder - toolbar will be implemented later

@@ -24,31 +24,31 @@ pub enum ResizeHandle {
 /// For now, they are defined as trait methods that can be imported.
 pub trait CommentOperations {
     /// Update comment drag position
-    fn update_comment_drag(&mut self, mouse_pos: Point<f32>, cx: &mut impl BorrowMut<App>);
+    fn update_comment_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<BlueprintEditorPanel>);
 
     /// End comment drag and update contained nodes
-    fn end_comment_drag(&mut self, cx: &mut impl BorrowMut<App>);
+    fn end_comment_drag(&mut self, cx: &mut Context<BlueprintEditorPanel>);
 
     /// Update comment resize based on handle being dragged
-    fn update_comment_resize(&mut self, mouse_pos: Point<f32>, cx: &mut impl BorrowMut<App>);
+    fn update_comment_resize(&mut self, mouse_pos: Point<f32>, cx: &mut Context<BlueprintEditorPanel>);
 
     /// End comment resize and update contained nodes
-    fn end_comment_resize(&mut self, cx: &mut impl BorrowMut<App>);
+    fn end_comment_resize(&mut self, cx: &mut Context<BlueprintEditorPanel>);
 
     /// Start editing comment text (usually triggered by double-click)
-    fn start_comment_editing(&mut self, comment_id: String, cx: &mut impl BorrowMut<App>);
+    fn start_comment_editing(&mut self, comment_id: String, cx: &mut Context<BlueprintEditorPanel>);
 
     /// Finish editing comment text and save changes
-    fn finish_comment_editing(&mut self, cx: &mut impl BorrowMut<App>);
+    fn finish_comment_editing(&mut self, cx: &mut Context<BlueprintEditorPanel>);
 
     /// Add a new comment at the specified position
-    fn add_comment(&mut self, position: Point<f32>, window: &mut Window, cx: &mut impl BorrowMut<App>);
+    fn add_comment(&mut self, position: Point<f32>, window: &mut Window, cx: &mut Context<BlueprintEditorPanel>);
 
     /// Delete the selected comment(s)
-    fn delete_comment(&mut self, comment_id: String, cx: &mut impl BorrowMut<App>);
+    fn delete_comment(&mut self, comment_id: String, cx: &mut Context<BlueprintEditorPanel>);
 
     /// Create a new comment at the center of the current view
-    fn create_comment_at_center(&mut self, window: &mut Window, cx: &mut impl BorrowMut<App>);
+    fn create_comment_at_center(&mut self, window: &mut Window, cx: &mut Context<BlueprintEditorPanel>);
 }
 
 // Implementation note: The actual implementation will be provided when BlueprintEditorPanel
@@ -57,7 +57,7 @@ pub trait CommentOperations {
 /* Reference implementation for BlueprintEditorPanel:
 
 impl CommentOperations for BlueprintEditorPanel {
-    fn update_comment_drag(&mut self, mouse_pos: Point<f32>, cx: &mut impl BorrowMut<App>) {
+    fn update_comment_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<BlueprintEditorPanel>) {
         if let Some(comment_id) = &self.dragging_comment.clone() {
             let new_position = Point::new(
                 mouse_pos.x - self.drag_offset.x,
@@ -85,7 +85,7 @@ impl CommentOperations for BlueprintEditorPanel {
         }
     }
 
-    fn end_comment_drag(&mut self, cx: &mut impl BorrowMut<App>) {
+    fn end_comment_drag(&mut self, cx: &mut Context<BlueprintEditorPanel>) {
         if let Some(comment_id) = &self.dragging_comment.clone() {
             if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
                 comment.update_contained_nodes(&self.graph.nodes);
@@ -96,7 +96,7 @@ impl CommentOperations for BlueprintEditorPanel {
         cx.notify();
     }
 
-    fn update_comment_resize(&mut self, mouse_pos: Point<f32>, cx: &mut impl BorrowMut<App>) {
+    fn update_comment_resize(&mut self, mouse_pos: Point<f32>, cx: &mut Context<BlueprintEditorPanel>) {
         if let Some((comment_id, handle)) = &self.resizing_comment.clone() {
             if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
                 let delta_x = mouse_pos.x - self.drag_offset.x;
@@ -149,7 +149,7 @@ impl CommentOperations for BlueprintEditorPanel {
         }
     }
 
-    fn end_comment_resize(&mut self, cx: &mut impl BorrowMut<App>) {
+    fn end_comment_resize(&mut self, cx: &mut Context<BlueprintEditorPanel>) {
         if let Some((comment_id, _)) = &self.resizing_comment.clone() {
             if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
                 comment.update_contained_nodes(&self.graph.nodes);
@@ -160,7 +160,7 @@ impl CommentOperations for BlueprintEditorPanel {
         cx.notify();
     }
 
-    fn start_comment_editing(&mut self, comment_id: String, cx: &mut impl BorrowMut<App>) {
+    fn start_comment_editing(&mut self, comment_id: String, cx: &mut Context<BlueprintEditorPanel>) {
         self.editing_comment = Some(comment_id.clone());
 
         // Load current comment text into input
@@ -173,7 +173,7 @@ impl CommentOperations for BlueprintEditorPanel {
         cx.notify();
     }
 
-    fn finish_comment_editing(&mut self, cx: &mut impl BorrowMut<App>) {
+    fn finish_comment_editing(&mut self, cx: &mut Context<BlueprintEditorPanel>) {
         if let Some(comment_id) = &self.editing_comment.clone() {
             let new_text = self.comment_text_input.read(cx).text().to_string();
 
@@ -186,7 +186,7 @@ impl CommentOperations for BlueprintEditorPanel {
         }
     }
 
-    fn add_comment(&mut self, position: Point<f32>, window: &mut Window, cx: &mut impl BorrowMut<App>) {
+    fn add_comment(&mut self, position: Point<f32>, window: &mut Window, cx: &mut Context<BlueprintEditorPanel>) {
         let new_comment = BlueprintComment::new(position, window, cx);
 
         // Subscribe to color picker changes
@@ -214,13 +214,13 @@ impl CommentOperations for BlueprintEditorPanel {
         cx.notify();
     }
 
-    fn delete_comment(&mut self, comment_id: String, cx: &mut impl BorrowMut<App>) {
+    fn delete_comment(&mut self, comment_id: String, cx: &mut Context<BlueprintEditorPanel>) {
         self.graph.comments.retain(|c| c.id != comment_id);
         self.graph.selected_comments.retain(|id| id != &comment_id);
         cx.notify();
     }
 
-    fn create_comment_at_center(&mut self, window: &mut Window, cx: &mut impl BorrowMut<App>) {
+    fn create_comment_at_center(&mut self, window: &mut Window, cx: &mut Context<BlueprintEditorPanel>) {
         // Calculate center of current viewport
         let center_screen = Point::new(1920.0 / 2.0, 1080.0 / 2.0);
 
