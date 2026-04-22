@@ -2,7 +2,7 @@
 
 use gpui::*;
 use crate::editor::panel::BlueprintEditorPanel;
-use crate::core::types::{Connection, BlueprintNode, NodeType, Size};
+use crate::core::types::{Connection, BlueprintNode, NodeType};
 use crate::core::graph::BlueprintGraph;
 use ui::graph::DataType;
 use super::operations::ConnectionDrag;
@@ -322,7 +322,7 @@ impl BlueprintEditorPanel {
     fn is_node_visible_simple(node: &BlueprintNode, graph: &BlueprintGraph) -> bool {
         // Calculate node position in screen coordinates
         let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
-        let node_screen_size = Size::new(
+        let node_screen_size = gpui::Size::new(
             node.size.width * graph.zoom_level,
             node.size.height * graph.zoom_level,
         );

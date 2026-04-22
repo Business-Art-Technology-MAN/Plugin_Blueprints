@@ -83,22 +83,22 @@ pub fn validate_connection(
 }
 
 /// Get all connections from a specific pin
-pub fn get_connections_from_pin(
+pub fn get_connections_from_pin<'a>(
     node_id: &str,
     pin_id: &str,
-    graph: &BlueprintGraph,
-) -> Vec<&Connection> {
+    graph: &'a BlueprintGraph,
+) -> Vec<&'a Connection> {
     graph.connections.iter()
         .filter(|conn| conn.source_node == node_id && conn.source_pin == pin_id)
         .collect()
 }
 
 /// Get all connections to a specific pin
-pub fn get_connections_to_pin(
+pub fn get_connections_to_pin<'a>(
     node_id: &str,
     pin_id: &str,
-    graph: &BlueprintGraph,
-) -> Vec<&Connection> {
+    graph: &'a BlueprintGraph,
+) -> Vec<&'a Connection> {
     graph.connections.iter()
         .filter(|conn| conn.target_node == node_id && conn.target_pin == pin_id)
         .collect()

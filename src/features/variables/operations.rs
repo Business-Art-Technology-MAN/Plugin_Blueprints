@@ -165,7 +165,7 @@ impl BlueprintEditorPanel {
             icon: "📖".to_string(),
             node_type: NodeType::Logic,
             position,
-            size: crate::editor::types::Size::new(180.0, 80.0),
+            size: gpui::Size::new(180.0, 80.0),
             inputs: vec![],
             outputs: vec![Pin {
                 id: "value".to_string(),
@@ -200,7 +200,7 @@ impl BlueprintEditorPanel {
             icon: "📝".to_string(),
             node_type: NodeType::Logic,
             position,
-            size: crate::editor::types::Size::new(180.0, 100.0),
+            size: gpui::Size::new(180.0, 100.0),
             inputs: vec![
                 Pin {
                     id: "exec".to_string(),

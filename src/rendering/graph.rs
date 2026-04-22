@@ -107,9 +107,10 @@ impl NodeGraphRenderer {
             .when(panel.show_graph_controls, |this| {
                 this.child(crate::rendering::overlay::render_graph_controls(panel, cx))
             })
-            .when(panel.show_minimap, |this| {
-                this.child(crate::minimap::MinimapRenderer::render(panel, cx))
-            })
+            // Minimap disabled for now - will be implemented in ui_components
+            // .when(panel.show_minimap, |this| {
+            //     this.child(crate::ui_components::minimap::MinimapRenderer::render(panel, cx))
+            // })
             // Attach all input handlers from rendering::input module
             .on_mouse_down(
                 gpui::MouseButton::Right,
