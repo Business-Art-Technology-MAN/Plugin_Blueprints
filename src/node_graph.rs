@@ -1352,19 +1352,19 @@ impl NodeGraphRenderer {
     ) {
         let distance = (to_pos.x - from_pos.x).abs();
         let control_offset = (distance * 0.4).max(50.0).min(150.0);
-        let control1 = Point::new(from_pos.x + control_offset, from_pos.y);
-        let control2 = Point::new(to_pos.x - control_offset, to_pos.y);
+        let control1 = gpui::point(gpui::px(from_pos.x + control_offset), gpui::px(from_pos.y));
+        let control2 = gpui::point(gpui::px(to_pos.x - control_offset), gpui::px(to_pos.y));
 
-        let segments = 28;
-        let dot_size = 5.0;
-        let dot_half = dot_size / 2.0;
+        let mut builder = gpui::PathBuilder::stroke(gpui::px(3.5));
+        builder.move_to(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)));
+        builder.cubic_bezier_to(
+            gpui::point(gpui::px(to_pos.x), gpui::px(to_pos.y)),
+            control1,
+            control2,
+        );
 
-        for i in 0..=segments {
-            let t = i as f32 / segments as f32;
-            let point = Self::bezier_point(from_pos, control1, control2, to_pos, t);
-            let origin = gpui::point(gpui::px(point.x - dot_half), gpui::px(point.y - dot_half));
-            let size = gpui::size(gpui::px(dot_size), gpui::px(dot_size));
-            window.paint_quad(gpui::fill(gpui::Bounds { origin, size }, color));
+        if let Ok(path) = builder.build() {
+            window.paint_path(path, color);
         }
     }
 
