@@ -100,86 +100,95 @@ pub fn on_mouse_down_left(
 /// Create mouse move handler for the graph canvas
 pub fn on_mouse_move(
     cx: &mut Context<BlueprintEditorPanel>,
-) -> impl Fn(&mut BlueprintEditorPanel, &MouseMoveEvent, &mut Window, &mut Context<BlueprintEditorPanel>) {
-    cx.listener(|panel, event: &MouseMoveEvent, _window, cx| {
-        // Convert window coordinates to element coordinates
-        let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
-        let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
+) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) {
+    let entity = cx.entity().clone();
+    move |event: &MouseMoveEvent, _window: &mut Window, cx: &mut App| {
+        entity.update(cx, |panel, cx| {
+            // Convert window coordinates to element coordinates
+            let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+            let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
 
-        // Check if right-click drag should start panning
-        if let Some(right_start) = panel.right_click_start {
-            let distance = ((mouse_pos.x - right_start.x).powi(2) + (mouse_pos.y - right_start.y).powi(2)).sqrt();
-            if distance > panel.right_click_threshold {
-                // Start panning if we've moved beyond threshold
-                panel.start_panning(right_start, cx);
-                panel.right_click_start = None; // Clear the right-click state
+            // Check if right-click drag should start panning
+            if let Some(right_start) = panel.right_click_start {
+                let distance = ((mouse_pos.x - right_start.x).powi(2) + (mouse_pos.y - right_start.y).powi(2)).sqrt();
+                if distance > panel.right_click_threshold {
+                    // Start panning if we've moved beyond threshold
+                    panel.start_panning(right_start, cx);
+                    panel.right_click_start = None; // Clear the right-click state
+                }
             }
-        }
 
-        if panel.dragging_comment.is_some() {
-            let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
-            panel.update_comment_drag(graph_pos, cx);
-        } else if panel.resizing_comment.is_some() {
-            let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
-            panel.update_comment_resize(graph_pos, cx);
-        } else if panel.dragging_node.is_some() {
-            let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
-            panel.update_drag(graph_pos, cx);
-        } else if panel.dragging_connection.is_some() {
-            // Update mouse position for drag line rendering
-            panel.update_connection_drag(mouse_pos, cx);
-        } else if panel.is_selecting() {
-            // Update selection drag
-            let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
-            panel.update_selection_drag(graph_pos, cx);
-        } else if panel.is_panning() && panel.dragging_node.is_none() {
-            // Only update panning if we're not dragging a node
-            panel.update_pan(mouse_pos, cx);
-        }
-    })
+            if panel.dragging_comment.is_some() {
+                let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+                panel.update_comment_drag(graph_pos, cx);
+            } else if panel.resizing_comment.is_some() {
+                let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+                panel.update_comment_resize(graph_pos, cx);
+            } else if panel.dragging_node.is_some() {
+                let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+                panel.update_drag(graph_pos, cx);
+            } else if panel.dragging_connection.is_some() {
+                // Update mouse position for drag line rendering
+                panel.update_connection_drag(mouse_pos, cx);
+            } else if panel.is_selecting() {
+                // Update selection drag
+                let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+                panel.update_selection_drag(graph_pos, cx);
+            } else if panel.is_panning() && panel.dragging_node.is_none() {
+                // Only update panning if we're not dragging a node
+                panel.update_pan(mouse_pos, cx);
+            }
+        });
+    }
 }
 
 /// Create mouse up (left button) handler for the graph canvas
 pub fn on_mouse_up_left(
     cx: &mut Context<BlueprintEditorPanel>,
-) -> impl Fn(&mut BlueprintEditorPanel, &MouseUpEvent, &mut Window, &mut Context<BlueprintEditorPanel>) {
-    cx.listener(|panel, event: &MouseUpEvent, window, cx| {
-        if panel.dragging_comment.is_some() {
-            panel.end_comment_drag(cx);
-        } else if panel.resizing_comment.is_some() {
-            panel.end_comment_resize(cx);
-        } else if panel.dragging_node.is_some() {
-            panel.end_drag(cx);
-        } else if panel.dragging_variable.is_some() {
-            // Variable dropped on canvas - show Get/Set context menu
-            let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
-            let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
-            panel.finish_dragging_variable(graph_pos, cx);
-        } else if panel.dragging_connection.is_some() {
-            // Show node creation menu when dropping connection on empty space
-            let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
-            let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
-            panel.show_node_picker(graph_pos, window, cx);
-            panel.cancel_connection_drag(cx);
-        } else if panel.is_selecting() {
-            // End selection drag
-            panel.end_selection_drag(cx);
-        } else if panel.is_panning() {
-            panel.end_panning(cx);
-        }
-    })
+) -> impl Fn(&MouseUpEvent, &mut Window, &mut App) {
+    let entity = cx.entity().clone();
+    move |event: &MouseUpEvent, window: &mut Window, cx: &mut App| {
+        entity.update(cx, |panel, cx| {
+            if panel.dragging_comment.is_some() {
+                panel.end_comment_drag(cx);
+            } else if panel.resizing_comment.is_some() {
+                panel.end_comment_resize(cx);
+            } else if panel.dragging_node.is_some() {
+                panel.end_drag(cx);
+            } else if panel.dragging_variable.is_some() {
+                // Variable dropped on canvas - show Get/Set context menu
+                let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+                let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+                panel.finish_dragging_variable(graph_pos, cx);
+            } else if panel.dragging_connection.is_some() {
+                // Show node creation menu when dropping connection on empty space
+                let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+                let graph_pos = NodeGraphRenderer::screen_to_graph_pos(element_pos, &panel.graph);
+                panel.show_node_picker(graph_pos, window, cx);
+                panel.cancel_connection_drag(cx);
+            } else if panel.is_selecting() {
+                // End selection drag
+                panel.end_selection_drag(cx);
+            } else if panel.is_panning() {
+                panel.end_panning(cx);
+            }
+        });
+    }
 }
 
 /// Create mouse up (right button) handler for the graph canvas
 pub fn on_mouse_up_right(
     cx: &mut Context<BlueprintEditorPanel>,
-) -> impl Fn(&mut BlueprintEditorPanel, &MouseUpEvent, &mut Window, &mut Context<BlueprintEditorPanel>) {
-    cx.listener(|panel, _event: &MouseUpEvent, _window, _cx| {
-        // Clear right-click state
-        // If we haven't started panning, we could show a context menu here
-        // For now, just clear the state
-        panel.right_click_start = None;
-    })
+) -> impl Fn(&MouseUpEvent, &mut Window, &mut App) {
+    let entity = cx.entity().clone();
+    move |_event: &MouseUpEvent, _window: &mut Window, cx: &mut App| {
+        entity.update(cx, |panel, _cx| {
+            // Clear right-click state
+            // If we haven't started panning, we could show a context menu here
+            // For now, just clear the state
+            panel.right_click_start = None;
+        });
+    }
 }
 
 /// Create scroll wheel handler for the graph canvas
