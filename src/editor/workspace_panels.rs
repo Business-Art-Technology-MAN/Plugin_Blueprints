@@ -9,6 +9,8 @@ use crate::editor::panel::BlueprintEditorPanel;
 use crate::features::macros::panel::MacrosRenderer;
 use crate::features::variables::rendering::VariablesRenderer;
 use crate::rendering::graph::NodeGraphRenderer;
+use crate::ui_components::node_library::NodeLibraryRenderer;
+use crate::ui_components::properties::PropertiesRenderer;
 
 /// Variables Panel
 pub struct VariablesPanel {
@@ -233,31 +235,7 @@ impl Render for PropertiesPanel {
                 .bg(cx.theme().sidebar)
                 .child(
                     editor.update(cx, |editor, cx| {
-                        let selected_count = editor.graph.selected_nodes.len();
-
-                        div()
-                            .size_full()
-                            .p_3()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(cx.theme().foreground)
-                                    .child("Details")
-                            )
-                            .child(
-                                div()
-                                    .mt_2()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(if selected_count == 0 {
-                                        "No node selected".to_string()
-                                    } else if selected_count == 1 {
-                                        "1 node selected".to_string()
-                                    } else {
-                                        format!("{} nodes selected", selected_count)
-                                    })
-                            )
+                        PropertiesRenderer::render(editor, cx)
                     })
                 )
         } else {
@@ -282,7 +260,7 @@ impl Panel for PropertiesPanel {
     }
 }
 
-/// Palette Panel placeholder
+/// Palette Panel
 pub struct PalettePanel {
     editor: WeakEntity<BlueprintEditorPanel>,
     focus_handle: FocusHandle,
@@ -301,16 +279,14 @@ impl EventEmitter<PanelEvent> for PalettePanel {}
 
 impl Render for PalettePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.editor.upgrade().is_some() {
+        if let Some(editor) = self.editor.upgrade() {
             div()
                 .size_full()
                 .bg(cx.theme().sidebar)
-                .p_3()
                 .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Palette panel is being migrated")
+                    editor.update(cx, |editor, cx| {
+                        NodeLibraryRenderer::render(editor, cx)
+                    })
                 )
         } else {
             div().child("Editor not available")

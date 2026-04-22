@@ -2,7 +2,7 @@
 
 use gpui::*;
 use gpui::prelude::*;
-use ui::{dock::{Panel, PanelEvent, PanelState}, h_flex, v_flex, ActiveTheme};
+use ui::{dock::{Panel, PanelEvent, PanelState}, h_flex, v_flex, ActiveTheme, StyledExt};
 
 use super::panel::BlueprintEditorPanel;
 use super::toolbar::ToolbarRenderer;
@@ -152,15 +152,81 @@ impl BlueprintEditorPanel {
     }
 
     pub fn render_find_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let node_count = self.graph.nodes.len();
+        let comment_count = self.graph.comments.len();
+
         v_flex()
             .size_full()
             .p_2()
             .gap_2()
             .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .child("Graph Index")
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("{} nodes, {} comments", node_count, comment_count))
+                    )
+            )
+            .child(
                 div()
-                    .text_sm()
+                    .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child("Find in Blueprint - Coming soon")
+                    .child("Click a node entry to select it in the graph.")
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_hidden()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .scrollable(Axis::Vertical)
+                            .children(
+                                self.graph.nodes.iter().map(|node| {
+                                    let node_id = node.id.clone();
+                                    let node_title = node.title.clone();
+
+                                    h_flex()
+                                        .w_full()
+                                        .items_center()
+                                        .justify_between()
+                                        .px_2()
+                                        .py_1p5()
+                                        .rounded(px(4.0))
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(cx.theme().muted.opacity(0.2)))
+                                        .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _, _window, cx| {
+                                            panel.graph.selected_nodes.clear();
+                                            panel.graph.selected_nodes.push(node_id.clone());
+                                            cx.notify();
+                                        }))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().foreground)
+                                                .child(node_title)
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(format!("({:.0}, {:.0})", node.position.x, node.position.y))
+                                        )
+                                })
+                            )
+                    )
             )
     }
 
