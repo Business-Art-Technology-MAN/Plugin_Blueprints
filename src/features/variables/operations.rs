@@ -9,7 +9,7 @@
 
 use gpui::*;
 use crate::editor::panel::BlueprintEditorPanel;
-use crate::editor::types::{Pin, PinType, BlueprintNode, NodeType};
+use crate::core::types::{Pin, PinType, BlueprintNode, NodeType};
 use super::types::{ClassVariable, VariableDrag, TypeItem};
 use ui::graph::DataType;
 

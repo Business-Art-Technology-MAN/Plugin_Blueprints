@@ -2,7 +2,7 @@
 
 use gpui::*;
 use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}};
-use crate::editor::panel::core::BlueprintEditorPanel;
+use crate::editor::panel::BlueprintEditorPanel;
 
 /// Compiler Panel - renders compilation results
 pub struct CompilerPanel {

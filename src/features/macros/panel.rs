@@ -7,7 +7,7 @@ use ui::{
     ActiveTheme as _, StyledExt, IconName,
 };
 
-use crate::editor::panel::core::BlueprintEditorPanel;
+use crate::editor::panel::BlueprintEditorPanel;
 
 pub struct MacrosRenderer;
 
