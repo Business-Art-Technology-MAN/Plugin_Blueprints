@@ -734,17 +734,23 @@ impl NodeGraphRenderer {
             "No description available.".to_string()
         };
 
-        // Dark node body color - near-black with slight transparency
-        let node_body_bg = gpui::Hsla { h: 0.0, s: 0.0, l: 0.08, a: 0.97 };
-        let node_body_lower = gpui::Hsla { h: 0.0, s: 0.0, l: 0.06, a: 0.98 };
-        // Header uses saturated node color with strong presence
-        let header_bg = node_color.opacity(0.55);
-        let header_border = node_color.opacity(0.35);
-        // Selection highlight: subtle accent glow instead of garish yellow
-        let selection_border = gpui::Hsla { h: node_color.h, s: 0.9, l: 0.65, a: 0.9 };
-
         let z = panel.graph.zoom_level;
-        let corner_radius = 6.0 * z;
+
+        // ── UE-style node colors ──────────────────────────────────────
+        // Body: very dark translucent charcoal
+        let body_bg   = gpui::Hsla { h: 0.0, s: 0.0, l: 0.07, a: 0.94 };
+        // Title bar: the node_color at moderate opacity over the dark body
+        let title_bg  = gpui::Hsla { h: node_color.h, s: (node_color.s * 0.85).min(1.0), l: (node_color.l * 0.55).max(0.18), a: 0.92 };
+        // Selection border: bright version of node color
+        let sel_border = gpui::Hsla { h: node_color.h, s: 0.85, l: 0.60, a: 1.0 };
+        let idle_border = gpui::Hsla { h: 0.0, s: 0.0, l: 0.18, a: 0.85 };
+
+        // ── Layout constants (keep in sync with calculate_pin_position) ──
+        // HEADER_H = title_pad_y*2 + content_line = 6+6 + 16 = 28  (unscaled)
+        // BODY_PAD = 8  (top padding of pin area)
+        // PIN_ROW  = 16 (row height, matches pin_h)
+        // PIN_GAP  = 4
+        // All values are *before* zoom multiplication.
 
         div()
             .absolute()
@@ -754,70 +760,50 @@ impl NodeGraphRenderer {
             .h(px(scaled_height))
             .child(
                 v_flex()
-                    .bg(node_body_bg)
-                    .border_color(if node.is_selected {
-                        selection_border
-                    } else {
-                        gpui::Hsla { h: 0.0, s: 0.0, l: 0.20, a: 0.6 }
-                    })
-                    .when(node.is_selected, |style| {
-                        style.border_2()
-                            .shadow_2xl()
-                    })
-                    .when(!node.is_selected, |style| {
-                        style.border_1()
-                    })
-                    .rounded(px(corner_radius))
+                    .bg(body_bg)
+                    .border_color(if node.is_selected { sel_border } else { idle_border })
+                    .when(node.is_selected, |s| s.border_2().shadow_2xl())
+                    .when(!node.is_selected, |s| s.border_1())
+                    .rounded(px(5.0 * z))
                     .shadow_lg()
-                    .when(is_dragging, |style| style.opacity(0.95).shadow_2xl())
+                    .when(is_dragging, |s| s.opacity(0.95).shadow_2xl())
                     .relative()
                     .overflow_hidden()
                     .cursor_pointer()
-                    // Colored top accent strip - thin saturated line at the very top
+                    // ── Title bar ──────────────────────────────────────
                     .child(
-                        div()
-                            .w_full()
-                            .h(px(3.0 * z))
-                            .bg(node_color.opacity(0.85))
-                    )
-                    .child(
-                        // Header - draggable area with strong gradient
                         h_flex()
                             .w_full()
-                            .px(px(10.0 * z))
-                            .py(px(7.0 * z))
-                            .relative()
-                            .bg(header_bg)
-                            .border_b_1()
-                            .border_color(header_border)
+                            .px(px(8.0 * z))
+                            .py(px(6.0 * z))
+                            .bg(title_bg)
                             .items_center()
-                            .gap(px(8.0 * z))
+                            .gap(px(6.0 * z))
                             .id(ElementId::Name(format!("node-header-{}", node.id).into()))
                             .child(
                                 div()
-                                    .text_size(px(16.0 * z))
-                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.95, a: 0.9 })
+                                    .text_size(px(14.0 * z))
+                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.97, a: 1.0 })
                                     .child(node.icon.clone()),
                             )
                             .child(
                                 div()
                                     .text_size(px(13.0 * z))
                                     .font_semibold()
-                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.95, a: 0.95 })
+                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.97, a: 1.0 })
                                     .child(node.title.clone()),
                             )
-                            // Macro indicator badge
-                            .when(node.definition_id.starts_with("subgraph:"), |style| {
-                                style.child(
+                            .when(node.definition_id.starts_with("subgraph:"), |s| {
+                                s.child(
                                     div()
-                                        .px(px(5.0 * z))
+                                        .px(px(4.0 * z))
                                         .py(px(1.0 * z))
                                         .rounded(px(3.0 * z))
-                                        .bg(gpui::Rgba { r: 0.61, g: 0.35, b: 0.71, a: 0.4 })
+                                        .bg(gpui::Rgba { r: 0.55, g: 0.30, b: 0.70, a: 0.45 })
                                         .border_1()
-                                        .border_color(gpui::Rgba { r: 0.75, g: 0.50, b: 0.85, a: 0.8 })
-                                        .text_size(px(10.0 * z))
-                                        .text_color(gpui::Rgba { r: 0.85, g: 0.70, b: 0.95, a: 1.0 })
+                                        .border_color(gpui::Rgba { r: 0.70, g: 0.50, b: 0.85, a: 0.75 })
+                                        .text_size(px(9.0 * z))
+                                        .text_color(gpui::Rgba { r: 0.90, g: 0.80, b: 1.0, a: 1.0 })
                                         .child("MACRO")
                                 )
                             })
@@ -838,55 +824,34 @@ impl NodeGraphRenderer {
                                                     let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                                                     let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
                                                     let distance = ((current_pos.x - last_pos.x).powi(2) + (current_pos.y - last_pos.y).powi(2)).sqrt();
-                                                    distance < 10.0 && panel.last_click_time.is_some()
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                false
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                    } else {
-                                        false
-                                    };
+                                                    distance < 10.0
+                                                } else { false }
+                                            } else { false }
+                                        } else { false }
+                                    } else { false };
 
                                     if should_open_subgraph {
                                         let subgraph_id = node_definition_id.strip_prefix("subgraph:").unwrap_or(&node_definition_id).to_string();
-
                                         if let Some(library_id) = panel.get_macro_library_id(&subgraph_id) {
                                             let library_name = panel.library_manager.get_libraries()
                                                 .get(&library_id)
                                                 .map(|lib| lib.name.clone())
                                                 .unwrap_or_else(|| library_id.clone());
-
-                                            panel.request_open_engine_library(
-                                                library_id,
-                                                library_name,
-                                                Some(subgraph_id.clone()),
-                                                Some(node_title.clone()),
-                                                cx
-                                            );
+                                            panel.request_open_engine_library(library_id, library_name, Some(subgraph_id.clone()), Some(node_title.clone()), cx);
+                                        } else if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
+                                            panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
                                         } else {
-                                            if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
-                                                panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
-                                            } else {
-                                                tracing::info!("⚠️ Macro '{}' not found", node_title);
-                                            }
+                                            tracing::info!("Macro '{}' not found", node_title);
                                         }
-
                                         panel.last_click_time = None;
                                         panel.last_click_pos = None;
                                     } else {
                                         if !panel.graph.selected_nodes.contains(&node_id) {
                                             panel.select_node(Some(node_id.clone()), cx);
                                         }
-
                                         let element_pos = Self::window_to_graph_element_pos(event.position, panel);
                                         let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                                         panel.start_drag(node_id.clone(), graph_pos, cx);
-
                                         let current_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
                                         panel.last_click_time = Some(now);
                                         panel.last_click_pos = Some(current_pos);
@@ -894,13 +859,17 @@ impl NodeGraphRenderer {
                                 })
                             }),
                     )
+                    // ── Thin separator line ───────────────────────────
                     .child(
-                        // Pins body - dark recessed area
+                        div().w_full().h(px(1.0 * z))
+                            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.14, a: 1.0 })
+                    )
+                    // ── Pin body ──────────────────────────────────────
+                    .child(
                         v_flex()
-                            .px(px(10.0 * z))
+                            .px(px(6.0 * z))
                             .py(px(8.0 * z))
-                            .gap(px(5.0 * z))
-                            .bg(node_body_lower)
+                            .gap(px(4.0 * z))
                             .child(Self::render_node_pins(node, panel, cx)),
                     )
                     .on_mouse_down(gpui::MouseButton::Left, {
@@ -908,7 +877,6 @@ impl NodeGraphRenderer {
                         cx.listener(move |panel, event: &MouseDownEvent, window, cx| {
                             cx.stop_propagation();
                             panel.focus_handle().focus(window);
-
                             if !panel.graph.selected_nodes.contains(&node_id) {
                                 panel.select_node(Some(node_id.clone()), cx);
                             }
@@ -1054,6 +1022,8 @@ impl NodeGraphRenderer {
             })
     }
 
+    /// Pin row height must stay in sync with `calculate_pin_position`.
+    /// ROW_H = PIN_SIZE (12) + gap portion  →  effectively 16 per row at zoom 1.
     fn render_node_pins(
         node: &BlueprintNode,
         panel: &BlueprintEditorPanel,
@@ -1061,28 +1031,25 @@ impl NodeGraphRenderer {
     ) -> impl IntoElement {
         let max_pins = std::cmp::max(node.inputs.len(), node.outputs.len());
         let z = panel.graph.zoom_level;
-        let label_color = gpui::Hsla { h: 0.0, s: 0.0, l: 0.72, a: 0.95 };
+        let label_color = gpui::Hsla { h: 0.0, s: 0.0, l: 0.78, a: 1.0 };
 
         v_flex()
             .gap(px(4.0 * z))
             .children((0..max_pins).map(|i| {
                 h_flex()
-                    .justify_between()
+                    .h(px(Self::PIN_ROW_H * z))
                     .items_center()
-                    .gap(px(6.0 * z))
-                    // Left side: input pin + label
+                    // ── left: input pin + label ──
                     .child(
                         h_flex()
                             .items_center()
-                            .gap(px(5.0 * z))
+                            .gap(px(4.0 * z))
                             .child(
                                 if let Some(input_pin) = node.inputs.get(i) {
                                     Self::render_pin(input_pin, true, &node.id, panel, cx)
                                         .into_any_element()
                                 } else {
-                                    div()
-                                        .w(px(14.0 * z))
-                                        .into_any_element()
+                                    div().w(px(Self::PIN_SIZE * z)).h(px(Self::PIN_SIZE * z)).into_any_element()
                                 },
                             )
                             .child(
@@ -1093,21 +1060,16 @@ impl NodeGraphRenderer {
                                             .text_color(label_color)
                                             .child(input_pin.name.clone())
                                             .into_any_element()
-                                    } else {
-                                        div().into_any_element()
-                                    }
-                                } else {
-                                    div().into_any_element()
-                                },
+                                    } else { div().into_any_element() }
+                                } else { div().into_any_element() },
                             )
                     )
-                    // Flexible spacer
                     .child(div().flex_grow())
-                    // Right side: label + output pin
+                    // ── right: label + output pin ──
                     .child(
                         h_flex()
                             .items_center()
-                            .gap(px(5.0 * z))
+                            .gap(px(4.0 * z))
                             .child(
                                 if let Some(output_pin) = node.outputs.get(i) {
                                     if !output_pin.name.is_empty() {
@@ -1116,21 +1078,15 @@ impl NodeGraphRenderer {
                                             .text_color(label_color)
                                             .child(output_pin.name.clone())
                                             .into_any_element()
-                                    } else {
-                                        div().into_any_element()
-                                    }
-                                } else {
-                                    div().into_any_element()
-                                },
+                                    } else { div().into_any_element() }
+                                } else { div().into_any_element() },
                             )
                             .child(
                                 if let Some(output_pin) = node.outputs.get(i) {
                                     Self::render_pin(output_pin, false, &node.id, panel, cx)
                                         .into_any_element()
                                 } else {
-                                    div()
-                                        .w(px(14.0 * z))
-                                        .into_any_element()
+                                    div().w(px(Self::PIN_SIZE * z)).h(px(Self::PIN_SIZE * z)).into_any_element()
                                 },
                             )
                     )
@@ -1158,55 +1114,46 @@ impl NodeGraphRenderer {
             false
         };
 
-        let is_execution = pin.data_type == DataType::Execution;
+        let is_exec = pin.data_type == DataType::Execution;
         let z = panel.graph.zoom_level;
-        // Execution pins are wider (keystone shape), data pins are circles
-        let pin_w = if is_execution { 14.0 * z } else { 12.0 * z };
-        let pin_h = if is_execution { 14.0 * z } else { 12.0 * z };
+        let sz = Self::PIN_SIZE * z;
 
         let type_string = pin.data_type.rust_type_string();
         let tooltip_text: &'static str = Box::leak(type_string.into_boxed_str());
         let element_id = format!("pin-{}-{}", node_id, pin.id);
 
-        // Execution pin color: white with slight warmth (like UE)
-        let exec_color = if is_execution {
-            gpui::Hsla { h: 0.0, s: 0.0, l: 0.85, a: 1.0 }
-        } else {
-            pin_color
-        };
-
-        let compatible_accent = cx.theme().accent;
-        let border_subtle = gpui::Hsla { h: 0.0, s: 0.0, l: 0.30, a: 0.7 };
+        let accent = cx.theme().accent;
 
         div()
             .id(ElementId::Name(element_id.into()))
             .tooltip(create_text_tooltip(tooltip_text))
-            .w(px(pin_w))
-            .h(px(pin_h))
+            .w(px(sz))
+            .h(px(sz))
             .relative()
-            // Execution pins: render keystone via canvas, hide div background
-            // Data pins: filled circle with refined styling
-            .when(is_execution, |style| {
-                style
-                    .bg(gpui::transparent_black())
-                    .rounded(px(2.0 * z))
-                    .child(Self::render_exec_pin_shape(pin_w, pin_h, exec_color, is_compatible, compatible_accent))
-            })
-            .when(!is_execution, |style| {
-                style
-                    .bg(exec_color) // uses pin_color since exec_color == pin_color when !is_execution
-                    .rounded_full()
-                    .border_2()
-                    .border_color(if is_compatible {
-                        compatible_accent
-                    } else {
-                        border_subtle
-                    })
-                    .when(is_compatible, |s| s.border_3().shadow_lg())
-                    .shadow_sm()
-                    .hover(|s| s.shadow_md())
-            })
             .cursor_pointer()
+            .when(is_exec, |s| {
+                // Execution pin: canvas-drawn |> arrow shape
+                let exec_fill = if is_compatible { accent } else {
+                    gpui::Hsla { h: 0.0, s: 0.0, l: 0.88, a: 1.0 }
+                };
+                let exec_border = if is_compatible { accent } else {
+                    gpui::Hsla { h: 0.0, s: 0.0, l: 0.50, a: 0.9 }
+                };
+                s.bg(gpui::transparent_black())
+                 .child(Self::paint_exec_pin(sz, exec_fill, exec_border))
+            })
+            .when(!is_exec, |s| {
+                // Data pin: filled circle
+                let fill = if is_compatible { accent } else { pin_color };
+                let border = if is_compatible { accent } else {
+                    gpui::Hsla { h: 0.0, s: 0.0, l: 0.25, a: 0.9 }
+                };
+                s.bg(fill)
+                 .rounded_full()
+                 .border_1()
+                 .border_color(border)
+                 .when(is_compatible, |s2| s2.border_2().shadow_lg())
+            })
             .when(!is_input, |div| {
                 let pin_id = pin.id.clone();
                 let node_id = node_id.to_string();
@@ -1232,66 +1179,48 @@ impl NodeGraphRenderer {
             .into_any_element()
     }
 
-    /// Render the sideways keystone / home-plate shape for execution pins (like UE4).
-    /// Shape points right: flat left edge, pointed right edge.
-    fn render_exec_pin_shape(
-        w: f32,
-        h: f32,
-        color: gpui::Hsla,
-        is_compatible: bool,
-        accent: gpui::Hsla,
-    ) -> impl IntoElement {
-        let fill_color = if is_compatible { accent } else { color };
-        let border_color = if is_compatible {
-            accent
-        } else {
-            gpui::Hsla { h: 0.0, s: 0.0, l: 0.45, a: 0.8 }
-        };
-
+    /// UE-style execution pin:  |>   (flat left wall + triangle pointing right)
+    ///
+    /// ```text
+    ///   (0,0)────────(body,0)
+    ///     |                  \
+    ///     |                   (w, h/2)
+    ///     |                  /
+    ///   (0,h)────────(body,h)
+    /// ```
+    fn paint_exec_pin(sz: f32, fill: gpui::Hsla, border: gpui::Hsla) -> impl IntoElement {
         gpui::canvas(
             move |_bounds, _window, _cx| {},
-            move |bounds, _prepaint_state, window, _cx| {
+            move |bounds, _prepaint, window, _cx| {
                 let ox = bounds.origin.x.as_f32();
                 let oy = bounds.origin.y.as_f32();
-                let bw = w;
-                let bh = h;
+                let w = sz;
+                let h = sz;
+                // The flat "body" portion is ~55% of width, then triangle tip
+                let body = w * 0.50;
 
-                // Keystone shape: pentagon pointing right
-                //   (0, inset)
-                //   |           \
-                //   |            > (w, h/2)  -- the point
-                //   |           /
-                //   (0, h-inset)
-                let inset = bh * 0.15; // slight top/bottom inset for the keystone look
-                let arrow_body = bw * 0.60; // how far the flat part extends before the arrow
-
-                // Border (slightly larger)
-                let b = 1.5_f32;
+                // Outline (paint first, slightly expanded)
+                let b = 1.2_f32;
                 {
-                    let mut builder = gpui::PathBuilder::fill();
-                    builder.move_to(gpui::point(gpui::px(ox - b), gpui::px(oy + inset - b)));
-                    builder.line_to(gpui::point(gpui::px(ox + arrow_body), gpui::px(oy - b)));
-                    builder.line_to(gpui::point(gpui::px(ox + bw + b), gpui::px(oy + bh / 2.0)));
-                    builder.line_to(gpui::point(gpui::px(ox + arrow_body), gpui::px(oy + bh + b)));
-                    builder.line_to(gpui::point(gpui::px(ox - b), gpui::px(oy + bh - inset + b)));
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, border_color);
-                    }
+                    let mut p = gpui::PathBuilder::fill();
+                    p.move_to(gpui::point(gpui::px(ox - b),        gpui::px(oy - b)));
+                    p.line_to(gpui::point(gpui::px(ox + body),     gpui::px(oy - b)));
+                    p.line_to(gpui::point(gpui::px(ox + w + b),    gpui::px(oy + h / 2.0)));
+                    p.line_to(gpui::point(gpui::px(ox + body),     gpui::px(oy + h + b)));
+                    p.line_to(gpui::point(gpui::px(ox - b),        gpui::px(oy + h + b)));
+                    p.close();
+                    if let Ok(path) = p.build() { window.paint_path(path, border); }
                 }
-
                 // Fill
                 {
-                    let mut builder = gpui::PathBuilder::fill();
-                    builder.move_to(gpui::point(gpui::px(ox), gpui::px(oy + inset)));
-                    builder.line_to(gpui::point(gpui::px(ox + arrow_body), gpui::px(oy)));
-                    builder.line_to(gpui::point(gpui::px(ox + bw), gpui::px(oy + bh / 2.0)));
-                    builder.line_to(gpui::point(gpui::px(ox + arrow_body), gpui::px(oy + bh)));
-                    builder.line_to(gpui::point(gpui::px(ox), gpui::px(oy + bh - inset)));
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, fill_color);
-                    }
+                    let mut p = gpui::PathBuilder::fill();
+                    p.move_to(gpui::point(gpui::px(ox),        gpui::px(oy)));
+                    p.line_to(gpui::point(gpui::px(ox + body), gpui::px(oy)));
+                    p.line_to(gpui::point(gpui::px(ox + w),    gpui::px(oy + h / 2.0)));
+                    p.line_to(gpui::point(gpui::px(ox + body), gpui::px(oy + h)));
+                    p.line_to(gpui::point(gpui::px(ox),        gpui::px(oy + h)));
+                    p.close();
+                    if let Ok(path) = p.build() { window.paint_path(path, fill); }
                 }
             },
         )
@@ -1544,67 +1473,51 @@ impl NodeGraphRenderer {
         gpui::Hsla::from(rgba)
     }
 
+    // ── Shared layout constants (unscaled px) ─────────────────────
+    // These MUST match the values used in render_blueprint_node / render_node_pins.
+    //   title_bar  = py(6)*2 + line_height(~14) = 26
+    //   separator  = 1
+    //   body_pad_y = 8   (top padding of pin area)
+    //   pin row    = PIN_ROW_H (16)  with PIN_GAP (4) between rows
+    //   pin_size   = PIN_SIZE (12)  – the circle / exec-arrow size
+    const HEADER_H: f32  = 27.0;   // title bar total height
+    const SEP_H: f32     = 1.0;    // separator line
+    const BODY_PAD: f32  = 8.0;    // py() of pin body
+    const PIN_ROW_H: f32 = 16.0;   // fixed row height
+    const PIN_GAP: f32   = 4.0;    // gap between rows (v_flex gap)
+    const PIN_SIZE: f32  = 12.0;   // pin circle / arrow size
+    const PIN_BODY_PX: f32 = 6.0;  // px() of pin body
+
     fn calculate_pin_position(
         node: &BlueprintNode,
         pin_id: &str,
         is_input: bool,
         graph: &BlueprintGraph,
     ) -> Option<Point<f32>> {
-        // Special handling for reroute nodes - pins are at the center
         if node.node_type == NodeType::Reroute {
-            let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
-            // Reroute nodes connect at their center
-            return Some(Point::new(
-                node_screen_pos.x,
-                node_screen_pos.y,
-            ));
+            let p = Self::graph_to_screen_pos(node.position, graph);
+            return Some(Point::new(p.x, p.y));
         }
 
-        // Calculate pin position in container coordinates (same as mouse events)
-        let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
-        let header_height = 60.0 * graph.zoom_level; // Adjusted: actual header with padding is ~60px
-        let pin_size = 12.0 * graph.zoom_level; // Scaled size of pin
-        let pin_gap = 4.0 * graph.zoom_level; // Gap between pin rows (matches render_node_pins)
-        let pin_spacing = pin_size + pin_gap; // Total vertical spacing per pin row
-        let pin_margin = 10.0 * graph.zoom_level; // Margin from node edge (matches p() in render)
+        let z = graph.zoom_level;
+        let nsp = Self::graph_to_screen_pos(node.position, graph);
+
+        // Vertical offset from node top to the first pin row's vertical center
+        let top_to_first_pin = (Self::HEADER_H + Self::SEP_H + Self::BODY_PAD) * z
+            + (Self::PIN_ROW_H * z) / 2.0;
+
+        let row_stride = (Self::PIN_ROW_H + Self::PIN_GAP) * z;
 
         if is_input {
-            // Find input pin index
-            if let Some((index, _)) = node
-                .inputs
-                .iter()
-                .enumerate()
-                .find(|(_, pin)| pin.id == pin_id)
-            {
-                let pin_y = node_screen_pos.y
-                    + header_height
-                    + pin_margin
-                    + (index as f32 * pin_spacing)
-                    + (pin_size / 2.0);
-                Some(Point::new(node_screen_pos.x, pin_y))
-            } else {
-                None
-            }
+            if let Some((idx, _)) = node.inputs.iter().enumerate().find(|(_, p)| p.id == pin_id) {
+                let pin_y = nsp.y + top_to_first_pin + idx as f32 * row_stride;
+                Some(Point::new(nsp.x, pin_y))
+            } else { None }
         } else {
-            // Find output pin index
-            if let Some((index, _)) = node
-                .outputs
-                .iter()
-                .enumerate()
-                .find(|(_, pin)| pin.id == pin_id)
-            {
-                let pin_y = node_screen_pos.y
-                    + header_height
-                    + pin_margin
-                    + (index as f32 * pin_spacing)
-                    + (pin_size / 2.0);
-                Some(Point::new(
-                    node_screen_pos.x + node.size.width * graph.zoom_level,
-                    pin_y,
-                ))
-            } else {
-                None
-            }
+            if let Some((idx, _)) = node.outputs.iter().enumerate().find(|(_, p)| p.id == pin_id) {
+                let pin_y = nsp.y + top_to_first_pin + idx as f32 * row_stride;
+                Some(Point::new(nsp.x + node.size.width * z, pin_y))
+            } else { None }
         }
     }
 
