@@ -754,11 +754,12 @@ impl NodeGraphRenderer {
         );
 
         // ── Layout constants (keep in sync with calculate_pin_position) ──
-        // HEADER_H = title_pad_y*2 + content_line = 6+6 + 16 = 28  (unscaled)
-        // BODY_PAD = 8  (top padding of pin area)
-        // PIN_ROW  = 16 (row height, matches pin_h)
-        // PIN_GAP  = 4
-        // All values are *before* zoom multiplication.
+        // HEADER_H = header_py*2 + max(icon_h=12, title_pill_h=14+3) = 10+17 = 27
+        // SEP_H    = 1  separator
+        // BODY_PAD = 8  px() AND py() of the pin body container
+        // PIN_ROW_H= 16 fixed row height
+        // PIN_GAP  = 4  gap between rows
+        // All values are unscaled (multiply by z before using).
 
         div()
             .absolute()
@@ -802,7 +803,7 @@ impl NodeGraphRenderer {
                                 h_flex()
                                     .w_full()
                                     .px(px(10.0 * z))
-                                    .py(px(8.0 * z))
+                                    .py(px(5.0 * z))
                                     .items_center()
                                     .gap(px(6.0 * z))
                                     .id(ElementId::Name(format!("node-header-{}", node.id).into()))
@@ -913,7 +914,7 @@ impl NodeGraphRenderer {
                             }
                         })
                     }),
-            )
+            ))
             .into_any_element()
     }
 
@@ -1511,13 +1512,13 @@ impl NodeGraphRenderer {
     //   body_pad_y = 8   (top padding of pin area)
     //   pin row    = PIN_ROW_H (16)  with PIN_GAP (4) between rows
     //   pin_size   = PIN_SIZE (12)  – the circle / exec-arrow size
-    const HEADER_H: f32  = 27.0;   // title bar total height
-    const SEP_H: f32     = 1.0;    // separator line
-    const BODY_PAD: f32  = 8.0;    // py() of pin body
-    const PIN_ROW_H: f32 = 16.0;   // fixed row height
-    const PIN_GAP: f32   = 4.0;    // gap between rows (v_flex gap)
+    const HEADER_H: f32  = 27.0;   // header_py(5)*2 + max(icon=12, title_pill=17) = 27
+    const SEP_H: f32     = 1.0;    // separator line height
+    const BODY_PAD: f32  = 8.0;    // px() AND py() of the pin body container
+    const PIN_ROW_H: f32 = 16.0;   // each pin row's fixed height
+    const PIN_GAP: f32   = 4.0;    // gap between pin rows
     const PIN_SIZE: f32  = 12.0;   // pin circle / arrow size
-    const PIN_BODY_PX: f32 = 6.0;  // px() of pin body
+    const HEADER_PY: f32 = 5.0;    // header h_flex py (top = bottom)
 
     fn calculate_pin_position(
         node: &BlueprintNode,
@@ -1533,23 +1534,46 @@ impl NodeGraphRenderer {
         let z = graph.zoom_level;
         let nsp = Self::graph_to_screen_pos(node.position, graph);
 
-        // Vertical offset from node top to the first pin row's vertical center
-        let top_to_first_pin = (Self::HEADER_H + Self::SEP_H + Self::BODY_PAD) * z
-            + (Self::PIN_ROW_H * z) / 2.0;
-
-        let row_stride = (Self::PIN_ROW_H + Self::PIN_GAP) * z;
-
-        if is_input {
-            if let Some((idx, _)) = node.inputs.iter().enumerate().find(|(_, p)| p.id == pin_id) {
-                let pin_y = nsp.y + top_to_first_pin + idx as f32 * row_stride;
-                Some(Point::new(nsp.x, pin_y))
-            } else { None }
+        // ── Row index ────────────────────────────────────────────────────────
+        // Each row i renders input[i] on the left and output[i] on the right.
+        // Rows are always PIN_ROW_H tall (fixed), with PIN_GAP between them.
+        let row = if is_input {
+            node.inputs.iter().position(|p| p.id == pin_id)?
         } else {
-            if let Some((idx, _)) = node.outputs.iter().enumerate().find(|(_, p)| p.id == pin_id) {
-                let pin_y = nsp.y + top_to_first_pin + idx as f32 * row_stride;
-                Some(Point::new(nsp.x + node.size.width * z, pin_y))
-            } else { None }
-        }
+            node.outputs.iter().position(|p| p.id == pin_id)?
+        };
+
+        // ── Y: walk down to the vertical center of the target row ─────────────
+        //
+        //  ┌─────────────────────────────┐  ← nsp.y
+        //  │  HEADER_H                   │    header (title bar)
+        //  ├─────────────────────────────┤
+        //  │  SEP_H                      │    separator
+        //  ├─────────────────────────────┤
+        //  │  BODY_PAD (top py)          │    pin area top padding
+        //  │  ┌───────┐  ─ PIN_ROW_H/2  │  ← row 0 center  (row == 0)
+        //  │  └───────┘                  │
+        //  │  PIN_GAP                    │
+        //  │  ┌───────┐  ─ PIN_ROW_H/2  │  ← row 1 center  (row == 1)
+        //  │  └───────┘                  │
+        //  │  …                          │
+        //  │  BODY_PAD (bot py)          │
+        //  └─────────────────────────────┘
+        let pin_y = nsp.y
+            + (Self::HEADER_H + Self::SEP_H + Self::BODY_PAD) * z
+            + row as f32 * (Self::PIN_ROW_H + Self::PIN_GAP) * z
+            + Self::PIN_ROW_H * 0.5 * z;
+
+        // ── X: pin circles are inset BODY_PAD from each node edge ────────────
+        //  Input  circles sit on the LEFT  → wire attaches at their left  edge
+        //  Output circles sit on the RIGHT → wire attaches at their right edge
+        let pin_x = if is_input {
+            nsp.x + Self::BODY_PAD * z
+        } else {
+            nsp.x + (node.size.width - Self::BODY_PAD) * z
+        };
+
+        Some(Point::new(pin_x, pin_y))
     }
 
     fn render_bezier_connection(

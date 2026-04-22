@@ -310,7 +310,7 @@ impl BlueprintEditorPanel {
             icon: "⚡".to_string(),
             node_type: NodeType::Event,
             position: Point::new(100.0, 200.0),
-            size: Size::new(180.0, 80.0),
+            size: Size::new(240.0, 60.0),
             inputs: vec![],
             outputs: vec![Pin {
                 id: "Body".to_string(),
@@ -336,7 +336,7 @@ impl BlueprintEditorPanel {
             icon: "➕".to_string(),
             node_type: NodeType::Math,
             position: Point::new(400.0, 80.0),
-            size: Size::new(150.0, 100.0),
+            size: Size::new(240.0, 80.0),
             inputs: vec![
                 Pin {
                     id: "a".to_string(),
@@ -371,7 +371,7 @@ impl BlueprintEditorPanel {
             icon: "🔀".to_string(),
             node_type: NodeType::Logic,
             position: Point::new(400.0, 280.0),
-            size: Size::new(180.0, 120.0),
+            size: Size::new(240.0, 80.0),
             inputs: vec![
                 Pin {
                     id: "exec".to_string(),
@@ -420,7 +420,7 @@ impl BlueprintEditorPanel {
             icon: "📢".to_string(),
             node_type: NodeType::Logic,
             position: Point::new(680.0, 220.0),
-            size: Size::new(200.0, 100.0),
+            size: Size::new(260.0, 80.0),
             inputs: vec![
                 Pin {
                     id: "exec".to_string(),
@@ -458,7 +458,7 @@ impl BlueprintEditorPanel {
             icon: "📢".to_string(),
             node_type: NodeType::Logic,
             position: Point::new(680.0, 360.0),
-            size: Size::new(200.0, 100.0),
+            size: Size::new(260.0, 80.0),
             inputs: vec![
                 Pin {
                     id: "exec".to_string(),
@@ -496,7 +496,7 @@ impl BlueprintEditorPanel {
             icon: "⚖".to_string(),
             node_type: NodeType::Logic,
             position: Point::new(620.0, 80.0),
-            size: Size::new(160.0, 100.0),
+            size: Size::new(240.0, 80.0),
             inputs: vec![
                 Pin {
                     id: "a".to_string(),

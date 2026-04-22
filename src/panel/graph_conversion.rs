@@ -152,7 +152,12 @@ impl BlueprintEditorPanel {
                 icon,
                 node_type,
                 position: Point::new(node_instance.position.x, node_instance.position.y),
-                size: Size::new(150.0, 100.0),
+                size: {
+                    let max_pins = node_instance.inputs.len().max(node_instance.outputs.len());
+                    let pin_rows = max_pins.max(1) as f32;
+                    let height = 44.0 + pin_rows * 16.0 + ((pin_rows - 1.0).max(0.0)) * 4.0;
+                    Size::new(240.0, height)
+                },
                 inputs: node_instance.inputs.iter().map(|pin_inst| {
                     let pin = &pin_inst.pin;
                     Pin {

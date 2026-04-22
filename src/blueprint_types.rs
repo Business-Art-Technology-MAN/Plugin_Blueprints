@@ -601,7 +601,15 @@ impl BlueprintNode {
             icon: definition.icon.clone(),
             node_type,
             position,
-            size: Size::new(150.0, 100.0), // Default size
+            size: {
+                // Width: nodes are wide by default like UE
+                // Height: derived from pin count so the body fits snugly
+                //   HEADER_H(27) + SEP_H(1) + BODY_PAD*2(16) + rows*16 + gaps*4
+                let max_pins = inputs.len().max(outputs.len());
+                let pin_rows = max_pins.max(1) as f32;
+                let height = 44.0 + pin_rows * 16.0 + ((pin_rows - 1.0).max(0.0)) * 4.0;
+                Size::new(240.0, height)
+            },
             inputs,
             outputs,
             properties: definition.properties.clone(),
