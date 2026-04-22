@@ -7,8 +7,6 @@ use ui::{dock::{Panel, PanelEvent, PanelState}, h_flex, v_flex, ActiveTheme};
 use super::panel::BlueprintEditorPanel;
 use super::toolbar::ToolbarRenderer;
 use crate::core::events::*;
-use crate::features::macros::panel::MacrosRenderer;
-use crate::features::variables::rendering::VariablesRenderer;
 use crate::rendering::graph::NodeGraphRenderer;
 
 impl Panel for BlueprintEditorPanel {
@@ -153,112 +151,115 @@ impl BlueprintEditorPanel {
             )
     }
 
-    fn render_left_panel_tabs(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .w_full()
-            .h(px(32.0))
-            .bg(cx.theme().secondary)
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .items_center()
-            .child(self.render_sidebar_tab("Variables", 0, cx))
-            .child(self.render_sidebar_tab("Macros", 1, cx))
-            .child(div().flex_1())
-    }
-
-    fn render_sidebar_tab(
-        &self,
-        label: &'static str,
-        tab_index: usize,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let is_active = self.left_top_tab == tab_index;
-
-        h_flex()
-            .h_full()
-            .items_center()
-            .px_3()
-            .cursor_pointer()
-            .when(is_active, |this| {
-                this.border_b_2()
-                    .border_color(cx.theme().accent)
-                    .bg(cx.theme().background)
-            })
-            .when(!is_active, |this| {
-                this.text_color(cx.theme().muted_foreground)
-                    .hover(|s| s.bg(cx.theme().muted.opacity(0.1)))
-            })
-            .child(
-                div()
-                    .text_xs()
-                    .when(is_active, |s| {
-                        s.text_color(cx.theme().foreground)
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                    })
-                    .child(label)
-            )
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, _, _window, cx| {
-                panel.left_top_tab = tab_index;
-                cx.notify();
-            }))
-    }
-
-    fn render_right_panel_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .w_full()
-            .h(px(32.0))
-            .px_3()
-            .items_center()
-            .bg(cx.theme().secondary)
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(
-                div()
-                    .text_xs()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(cx.theme().foreground)
-                    .child("Details")
-            )
-    }
-
-    fn render_right_panel_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected_count = self.graph.selected_nodes.len();
-
+    pub fn render_find_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
-            .p_3()
+            .p_2()
             .gap_2()
             .child(
                 div()
                     .text_sm()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(cx.theme().foreground)
-                    .child("Selection")
-            )
-            .child(
-                div()
-                    .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(if selected_count == 0 {
-                        "No node selected".to_string()
-                    } else if selected_count == 1 {
-                        "1 node selected".to_string()
-                    } else {
-                        format!("{} nodes selected", selected_count)
-                    })
+                    .child("Find in Blueprint - Coming soon")
             )
+    }
+
+    pub fn render_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        use ui::IconName;
+
+        h_flex()
+            .w_full()
+            .h(px(32.0))
+            .bg(cx.theme().secondary)
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .items_center()
+            .overflow_x_hidden()
             .child(
-                div()
-                    .mt_2()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Detailed property editing is being migrated and will return here.")
+                h_flex()
+                    .items_center()
+                    .children(
+                        self.open_tabs.iter().enumerate().map(|(index, tab)| {
+                            let is_active = index == self.active_tab_index;
+
+                            h_flex()
+                                .items_center()
+                                .gap_1p5()
+                                .px_3()
+                                .h_full()
+                                .bg(if is_active {
+                                    cx.theme().background
+                                } else {
+                                    gpui::transparent_black()
+                                })
+                                .when(is_active, |this| {
+                                    this.border_t_2().border_color(cx.theme().accent)
+                                })
+                                .when(!is_active, |this| {
+                                    this.hover(|s| s.bg(cx.theme().muted.opacity(0.1)))
+                                })
+                                .cursor_pointer()
+                                .child(
+                                    ui::Icon::new(if tab.is_main {
+                                        IconName::Play
+                                    } else {
+                                        IconName::Component
+                                    })
+                                    .size(px(14.0))
+                                    .text_color(if is_active {
+                                        cx.theme().accent
+                                    } else {
+                                        cx.theme().muted_foreground
+                                    })
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .when(is_active, |s| s.font_weight(gpui::FontWeight::SEMIBOLD))
+                                        .text_color(if is_active {
+                                            cx.theme().foreground
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        })
+                                        .child(tab.name.clone())
+                                )
+                                .when(tab.is_dirty, |this| {
+                                    this.child(
+                                        div()
+                                            .w(px(6.0))
+                                            .h(px(6.0))
+                                            .rounded_full()
+                                            .bg(cx.theme().accent)
+                                    )
+                                })
+                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _window, cx| {
+                                    this.switch_to_tab(index, cx);
+                                }))
+                        })
+                    )
+            )
+            .child(div().flex_1())
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap_1()
+                    .px_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Tabs")
+                    )
             )
     }
 }
 
 impl Render for BlueprintEditorPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.workspace.is_none() {
+            self.initialize_workspace(window, cx);
+        }
+
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -287,64 +288,16 @@ impl Render for BlueprintEditorPanel {
             }))
             .child(ToolbarRenderer::render(self, cx))
             .child(
-                h_flex()
+                div()
                     .flex_1()
                     .min_h_0()
-                    .child(
-                        v_flex()
-                            .w(px(300.0))
-                            .min_w(px(220.0))
-                            .max_w(px(420.0))
-                            .h_full()
-                            .bg(cx.theme().sidebar)
-                            .border_r_1()
-                            .border_color(cx.theme().border)
-                            .child(self.render_left_panel_tabs(cx))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_h_0()
-                                    .map(|el| match self.left_top_tab {
-                                        0 => el.child(VariablesRenderer::render(self, cx)),
-                                        1 => el.child(MacrosRenderer::render(self, cx)),
-                                        _ => el.child(VariablesRenderer::render(self, cx)),
-                                    })
-                            )
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .child(NodeGraphRenderer::render(self, cx))
-                    )
-                    .child(
-                        v_flex()
-                            .w(px(340.0))
-                            .min_w(px(260.0))
-                            .max_w(px(480.0))
-                            .h_full()
-                            .bg(cx.theme().sidebar)
-                            .border_l_1()
-                            .border_color(cx.theme().border)
-                            .child(self.render_right_panel_header(cx))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_h_0()
-                                    .child(self.render_right_panel_content(cx))
-                            )
-                    )
-            )
-            .child(
-                div()
-                    .h(px(180.0))
-                    .min_h(px(120.0))
-                    .max_h(px(320.0))
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().background)
-                    .child(self.render_compiler_results(cx))
+                    .map(|el| {
+                        if let Some(workspace) = &self.workspace {
+                            el.child(workspace.clone())
+                        } else {
+                            el.child(div().child("Initializing workspace..."))
+                        }
+                    })
             )
     }
 }
