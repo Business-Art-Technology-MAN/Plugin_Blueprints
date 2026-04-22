@@ -194,57 +194,63 @@ pub fn on_mouse_up_right(
 /// Create scroll wheel handler for the graph canvas
 pub fn on_scroll_wheel(
     cx: &mut Context<BlueprintEditorPanel>,
-) -> impl Fn(&mut BlueprintEditorPanel, &ScrollWheelEvent, &mut Window, &mut Context<BlueprintEditorPanel>) {
-    cx.listener(|panel, event: &ScrollWheelEvent, _window, cx| {
-        // Zoom with scroll wheel
-        let delta_y = match event.delta {
-            ScrollDelta::Pixels(p) => p.y.as_f32(),
-            ScrollDelta::Lines(l) => l.y * 20.0, // Convert lines to pixels
-        };
+) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) {
+    let entity = cx.entity().clone();
+    move |event: &ScrollWheelEvent, _window: &mut Window, cx: &mut App| {
+        entity.update(cx, |panel, cx| {
+            // Zoom with scroll wheel
+            let delta_y = match event.delta {
+                ScrollDelta::Pixels(p) => p.y.as_f32(),
+                ScrollDelta::Lines(l) => l.y * 20.0, // Convert lines to pixels
+            };
 
-        // Perform zoom centered on the mouse
-        // Convert to element coordinates first
-        let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
-        panel.handle_zoom(delta_y, element_pos, cx);
-    })
+            // Perform zoom centered on the mouse
+            // Convert to element coordinates first
+            let element_pos = NodeGraphRenderer::window_to_graph_element_pos(event.position, panel);
+            panel.handle_zoom(delta_y, element_pos, cx);
+        });
+    }
 }
 
 /// Create key down handler for the graph canvas
 pub fn on_key_down(
     cx: &mut Context<BlueprintEditorPanel>,
-) -> impl Fn(&mut BlueprintEditorPanel, &KeyDownEvent, &mut Window, &mut Context<BlueprintEditorPanel>) {
-    cx.listener(|panel, event: &KeyDownEvent, window, cx| {
-        tracing::info!("Key pressed: {:?}", event.keystroke.key);
+) -> impl Fn(&KeyDownEvent, &mut Window, &mut App) {
+    let entity = cx.entity().clone();
+    move |event: &KeyDownEvent, window: &mut Window, cx: &mut App| {
+        entity.update(cx, |panel, cx| {
+            tracing::info!("Key pressed: {:?}", event.keystroke.key);
 
-        let key_lower = event.keystroke.key.to_lowercase();
+            let key_lower = event.keystroke.key.to_lowercase();
 
-        if panel.editing_comment.is_some() {
-            // Handle comment editing keys
-            if key_lower == "escape" {
-                // Cancel editing without saving
-                panel.editing_comment = None;
-                cx.notify();
-            } else if key_lower == "enter" && event.keystroke.modifiers.control {
-                // Ctrl+Enter saves the comment
-                panel.finish_comment_editing(cx);
+            if panel.editing_comment.is_some() {
+                // Handle comment editing keys
+                if key_lower == "escape" {
+                    // Cancel editing without saving
+                    panel.editing_comment = None;
+                    cx.notify();
+                } else if key_lower == "enter" && event.keystroke.modifiers.control {
+                    // Ctrl+Enter saves the comment
+                    panel.finish_comment_editing(cx);
+                }
+            } else if key_lower == "escape" {
+                // Escape key dismisses menus and cancels operations
+                if panel.variable_drop_menu_position.is_some() {
+                    panel.variable_drop_menu_position = None;
+                    cx.notify();
+                } else if panel.dragging_connection.is_some() {
+                    panel.cancel_connection_drag(cx);
+                }
+            } else if key_lower == "delete" || key_lower == "backspace" {
+                tracing::info!(
+                    "Delete key pressed! Selected nodes: {:?}",
+                    panel.graph.selected_nodes
+                );
+                panel.delete_selected_nodes(cx);
+            } else if key_lower == "c" && event.keystroke.modifiers.control {
+                // Ctrl+C creates a new comment
+                panel.create_comment_at_center(window, cx);
             }
-        } else if key_lower == "escape" {
-            // Escape key dismisses menus and cancels operations
-            if panel.variable_drop_menu_position.is_some() {
-                panel.variable_drop_menu_position = None;
-                cx.notify();
-            } else if panel.dragging_connection.is_some() {
-                panel.cancel_connection_drag(cx);
-            }
-        } else if key_lower == "delete" || key_lower == "backspace" {
-            tracing::info!(
-                "Delete key pressed! Selected nodes: {:?}",
-                panel.graph.selected_nodes
-            );
-            panel.delete_selected_nodes(cx);
-        } else if key_lower == "c" && event.keystroke.modifiers.control {
-            // Ctrl+C creates a new comment
-            panel.create_comment_at_center(window, cx);
-        }
-    })
+        });
+    }
 }
