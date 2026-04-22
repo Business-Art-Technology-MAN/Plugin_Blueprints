@@ -734,7 +734,6 @@ impl NodeGraphRenderer {
             .top(px(screen.y))
             .w(px(scaled_width))
             .bg(body_bg)
-            .corner_radii(gpui::Corners::all(corner_r))
             .overflow_hidden()
             .border_color(border_color)
             .when(node.is_selected,  |s| s.border_2().shadow_2xl())
