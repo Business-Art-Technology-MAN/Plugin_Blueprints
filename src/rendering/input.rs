@@ -182,10 +182,13 @@ pub fn on_mouse_up_right(
 ) -> impl Fn(&MouseUpEvent, &mut Window, &mut App) {
     let entity = cx.entity().clone();
     move |_event: &MouseUpEvent, _window: &mut Window, cx: &mut App| {
-        entity.update(cx, |panel, _cx| {
-            // Clear right-click state
-            // If we haven't started panning, we could show a context menu here
-            // For now, just clear the state
+        entity.update(cx, |panel, cx| {
+            // Match old behavior: always end panning on RMB release.
+            if panel.is_panning() {
+                panel.end_panning(cx);
+            }
+
+            // Always clear right-click gesture state.
             panel.right_click_start = None;
         });
     }
