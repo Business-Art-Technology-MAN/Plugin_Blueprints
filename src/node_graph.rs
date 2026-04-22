@@ -690,29 +690,21 @@ impl NodeGraphRenderer {
             return Self::render_reroute_node(node, panel, cx);
         }
 
-        // Use node's custom color if available, otherwise fall back to category/type-based color
+        // Use node's custom color if available, otherwise fall back to UE-accurate category colors
+        let ue_node_color = |node_type: &NodeType| match node_type {
+            NodeType::Event        => gpui::Hsla { h: 0.00, s: 0.82, l: 0.38, a: 1.0 }, // Deep crimson
+            NodeType::Logic        => gpui::Hsla { h: 0.61, s: 0.78, l: 0.40, a: 1.0 }, // Deep blue
+            NodeType::Math         => gpui::Hsla { h: 0.42, s: 0.68, l: 0.36, a: 1.0 }, // Teal-green
+            NodeType::Object       => gpui::Hsla { h: 0.10, s: 0.72, l: 0.38, a: 1.0 }, // Amber
+            NodeType::Reroute      => gpui::Hsla { h: 0.00, s: 0.00, l: 0.40, a: 1.0 },
+            NodeType::MacroEntry   => gpui::Hsla { h: 0.76, s: 0.62, l: 0.36, a: 1.0 }, // Purple
+            NodeType::MacroExit    => gpui::Hsla { h: 0.76, s: 0.62, l: 0.36, a: 1.0 }, // Purple
+            NodeType::MacroInstance=> gpui::Hsla { h: 0.76, s: 0.50, l: 0.28, a: 1.0 }, // Dark purple
+        };
         let node_color = if let Some(ref color_str) = node.color {
-            Self::parse_hex_color(color_str).unwrap_or_else(|| match node.node_type {
-                NodeType::Event => cx.theme().danger,
-                NodeType::Logic => cx.theme().primary,
-                NodeType::Math => cx.theme().success,
-                NodeType::Object => cx.theme().warning,
-                NodeType::Reroute => cx.theme().accent,
-                NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro entry
-                NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro exit
-                NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 }, // Darker purple for instances
-            })
+            Self::parse_hex_color(color_str).unwrap_or_else(|| ue_node_color(&node.node_type))
         } else {
-            match node.node_type {
-                NodeType::Event => cx.theme().danger,
-                NodeType::Logic => cx.theme().primary,
-                NodeType::Math => cx.theme().success,
-                NodeType::Object => cx.theme().warning,
-                NodeType::Reroute => cx.theme().accent,
-                NodeType::MacroEntry => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro entry
-                NodeType::MacroExit => gpui::Hsla { h: 0.75, s: 0.7, l: 0.6, a: 1.0 }, // Purple for macro exit
-                NodeType::MacroInstance => gpui::Hsla { h: 0.75, s: 0.5, l: 0.5, a: 1.0 }, // Darker purple for instances
-            }
+            ue_node_color(&node.node_type)
         };
 
         let graph_pos = Self::graph_to_screen_pos(node.position, &panel.graph);
@@ -736,14 +728,24 @@ impl NodeGraphRenderer {
 
         let z = panel.graph.zoom_level;
 
-        // ── UE-style node colors ──────────────────────────────────────
-        // Body: very dark translucent charcoal
-        let body_bg   = gpui::Hsla { h: 0.0, s: 0.0, l: 0.07, a: 0.94 };
-        // Title bar: the node_color at moderate opacity over the dark body
-        let title_bg  = gpui::Hsla { h: node_color.h, s: (node_color.s * 0.85).min(1.0), l: (node_color.l * 0.55).max(0.18), a: 0.92 };
-        // Selection border: bright version of node color
-        let sel_border = gpui::Hsla { h: node_color.h, s: 0.85, l: 0.60, a: 1.0 };
-        let idle_border = gpui::Hsla { h: 0.0, s: 0.0, l: 0.18, a: 0.85 };
+        // ── UE Blueprint node colors ─────────────────────────────────────
+        // Body: near-black with a very slight cool tint (matches UE's dark node body)
+        let body_bg    = gpui::Hsla { h: 0.61, s: 0.05, l: 0.06, a: 0.97 };
+        // Title bar: rich, saturated, darkened category color – full opacity
+        let title_bg   = gpui::Hsla {
+            h: node_color.h,
+            s: (node_color.s * 0.90).min(1.0),
+            l: (node_color.l * 0.65).clamp(0.14, 0.44),
+            a: 1.0,
+        };
+        // Highlight: subtle top-edge shimmer on the header
+        let _header_shine = gpui::Hsla { h: node_color.h, s: 0.30, l: 0.80, a: 0.12 };
+        // Selection: bright white border (UE style)
+        let sel_border  = gpui::white();
+        // Idle: very dark barely-visible border
+        let idle_border = gpui::Hsla { h: 0.0, s: 0.0, l: 0.22, a: 1.0 };
+        // Consistent corner radius used for both outer container and header
+        let corner_r    = px(7.0 * z);
 
         // ── Layout constants (keep in sync with calculate_pin_position) ──
         // HEADER_H = title_pad_y*2 + content_line = 6+6 + 16 = 28  (unscaled)
@@ -760,37 +762,41 @@ impl NodeGraphRenderer {
             .h(px(scaled_height))
             .child(
                 v_flex()
+                    .w_full()
                     .bg(body_bg)
-                    .border_color(if node.is_selected { sel_border } else { idle_border })
-                    .when(node.is_selected, |s| s.border_2().shadow_2xl())
-                    .when(!node.is_selected, |s| s.border_1())
-                    .rounded(px(5.0 * z))
-                    .shadow_lg()
-                    .when(is_dragging, |s| s.opacity(0.95).shadow_2xl())
-                    .relative()
+                    .rounded(corner_r)
                     .overflow_hidden()
+                    .border_color(if node.is_selected { sel_border } else { idle_border })
+                    .when(node.is_selected, |s| {
+                        s.border_2()
+                         .shadow_2xl()
+                    })
+                    .when(!node.is_selected, |s| s.border_1().shadow_md())
+                    .when(is_dragging, |s| s.opacity(0.92).shadow_2xl())
+                    .relative()
                     .cursor_pointer()
-                    // ── Title bar ──────────────────────────────────────
+                    // ── Title bar (rounded same as outer so corners are always clean) ──
                     .child(
                         h_flex()
                             .w_full()
-                            .px(px(8.0 * z))
-                            .py(px(6.0 * z))
+                            .px(px(10.0 * z))
+                            .py(px(8.0 * z))
                             .bg(title_bg)
+                            .rounded(corner_r)
                             .items_center()
                             .gap(px(6.0 * z))
                             .id(ElementId::Name(format!("node-header-{}", node.id).into()))
                             .child(
                                 div()
-                                    .text_size(px(14.0 * z))
-                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.97, a: 1.0 })
+                                    .text_size(px(12.0 * z))
+                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.92, a: 1.0 })
                                     .child(node.icon.clone()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(13.0 * z))
+                                    .text_size(px(14.0 * z))
                                     .font_semibold()
-                                    .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.97, a: 1.0 })
+                                    .text_color(gpui::white())
                                     .child(node.title.clone()),
                             )
                             .when(node.definition_id.starts_with("subgraph:"), |s| {
@@ -859,15 +865,15 @@ impl NodeGraphRenderer {
                                 })
                             }),
                     )
-                    // ── Thin separator line ───────────────────────────
+                    // ── Separator: dark line with a subtle colored tint ───────────
                     .child(
                         div().w_full().h(px(1.0 * z))
-                            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.14, a: 1.0 })
+                            .bg(gpui::Hsla { h: node_color.h, s: 0.15, l: 0.10, a: 1.0 })
                     )
                     // ── Pin body ──────────────────────────────────────
                     .child(
                         v_flex()
-                            .px(px(6.0 * z))
+                            .px(px(8.0 * z))
                             .py(px(8.0 * z))
                             .gap(px(4.0 * z))
                             .child(Self::render_node_pins(node, panel, cx)),
@@ -1031,7 +1037,7 @@ impl NodeGraphRenderer {
     ) -> impl IntoElement {
         let max_pins = std::cmp::max(node.inputs.len(), node.outputs.len());
         let z = panel.graph.zoom_level;
-        let label_color = gpui::Hsla { h: 0.0, s: 0.0, l: 0.78, a: 1.0 };
+        let label_color = gpui::Hsla { h: 0.0, s: 0.0, l: 0.86, a: 1.0 };
 
         v_flex()
             .gap(px(4.0 * z))
