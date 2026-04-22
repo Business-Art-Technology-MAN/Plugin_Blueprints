@@ -89,8 +89,8 @@ impl NodeGraphRenderer {
                 }
             }))
             .child(Self::render_comments(panel, cx))
-            .child(Self::render_nodes(panel, cx))
             .child(Self::render_connections(panel, cx))
+            .child(Self::render_nodes(panel, cx))
             .child(Self::render_selection_box(panel, cx))
             .child(Self::render_viewport_bounds_debug(panel, cx))
             .when(panel.show_debug_overlay, |this| {
@@ -742,52 +742,39 @@ impl NodeGraphRenderer {
             .h(px(scaled_height))
             .child(
                 v_flex()
-                    // Enhanced background with subtle gradient effect
-                    .bg(cx.theme().background)
+                    // Use a softer node panel background and more subtle border
+                    .bg(cx.theme().muted.opacity(0.06))
                     .border_color(if node.is_selected {
                         gpui::yellow()
                     } else {
-                        node_color
+                        cx.theme().border.opacity(0.25)
                     })
                     .when(node.is_selected, |style| {
-                        style.border_4() // Thick border for selected nodes
-                            .shadow_2xl() // Extra shadow when selected
+                        style.border_3() // Thicker border for selected nodes
+                            .shadow_2xl()
                     })
                     .when(!node.is_selected, |style| {
-                        style.border_2() // Normal border for unselected nodes
+                        style.border_1()
                     })
-                    .rounded(px(12.0 * panel.graph.zoom_level)) // Slightly more rounded
-                    .shadow_lg()
-                    .when(is_dragging, |style| style.opacity(0.9).shadow_2xl())
-                    // Add subtle inner shadow/glow for depth
+                    .rounded(px(10.0 * panel.graph.zoom_level))
+                    .shadow_md()
+                    .when(is_dragging, |style| style.opacity(0.95).shadow_2xl())
                     .relative()
                     .overflow_hidden()
                     .cursor_pointer()
                     .child(
-                        // Header - this is the draggable area with gradient
+                        // Header - draggable area with muted color accent
                         h_flex()
                             .w_full()
                             .p(px(10.0 * panel.graph.zoom_level))
                             .relative()
-                            // Enhanced header with gradient and border
-                            .bg(node_color.opacity(0.15))
-                            .border_b_2()
-                            .border_color(node_color.opacity(0.3))
+                            .bg(node_color.opacity(0.10))
+                            .border_b_1()
+                            .border_color(node_color.opacity(0.18))
                             .items_center()
                             .gap(px(10.0 * panel.graph.zoom_level))
                             .id(ElementId::Name(format!("node-header-{}", node.id).into()))
-                            // Add subtle top accent line
                             .child(
-                                div()
-                                    .absolute()
-                                    .top_0()
-                                    .left_0()
-                                    .right_0()
-                                    .h(px(2.0 * panel.graph.zoom_level))
-                                    .bg(node_color.opacity(0.6))
-                            )
-                            .child(
-                                // Icon with subtle glow
                                 div()
                                     .text_size(px(18.0 * panel.graph.zoom_level))
                                     .child(node.icon.clone()),
@@ -1215,7 +1202,7 @@ impl NodeGraphRenderer {
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        let mut elements = Vec::new();
+        let mut connection_shapes: Vec<(gpui::Path<gpui::Pixels>, gpui::Hsla)> = Vec::new();
 
         // Only render connections that connect to visible nodes
         let visible_connections: Vec<&Connection> = panel
@@ -1243,25 +1230,37 @@ impl NodeGraphRenderer {
             );
         }
 
-        // Render visible connections
         for connection in visible_connections {
-            elements.push(Self::render_connection(connection, panel, cx));
+            if let Some(shape) = Self::build_connection_shape(connection, panel, cx) {
+                connection_shapes.push(shape);
+            }
         }
 
-        // Always render dragging connection if present
-        if let Some(ref drag) = panel.dragging_connection {
-            elements.push(Self::render_dragging_connection(drag, panel, cx));
-        }
+        let dragging_shape = panel
+            .dragging_connection
+            .as_ref()
+            .and_then(|drag| Self::build_dragging_connection_shape(drag, panel, cx));
 
-        div().absolute().inset_0().children(elements)
+        gpui::canvas(
+            move |_bounds, _window, _cx| {},
+            move |_bounds, _prepaint_state, window, _cx| {
+                for (path, color) in &connection_shapes {
+                    window.paint_path(path.clone(), *color);
+                }
+                if let Some((path, color)) = &dragging_shape {
+                    window.paint_path(path.clone(), *color);
+                }
+            },
+        )
+        .absolute()
+        .inset_0()
     }
 
-    fn render_connection(
+    fn build_connection_shape(
         connection: &Connection,
         panel: &BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
-    ) -> AnyElement {
-        // Find the from and to nodes
+    ) -> Option<(gpui::Path<gpui::Pixels>, gpui::Hsla)> {
         let from_node = panel
             .graph
             .nodes
@@ -1274,7 +1273,6 @@ impl NodeGraphRenderer {
             .find(|n| n.id == connection.target_node);
 
         if let (Some(from_node), Some(to_node)) = (from_node, to_node) {
-            // Calculate exact pin positions
             if let (Some(from_pin_pos), Some(to_pin_pos)) = (
                 Self::calculate_pin_position(
                     from_node,
@@ -1284,7 +1282,6 @@ impl NodeGraphRenderer {
                 ),
                 Self::calculate_pin_position(to_node, &connection.target_pin, true, &panel.graph),
             ) {
-                // Get pin data type for color
                 let pin_color = if let Some(pin) = from_node
                     .outputs
                     .iter()
@@ -1295,52 +1292,71 @@ impl NodeGraphRenderer {
                     cx.theme().primary
                 };
 
-                // Create bezier curve connection
-                Self::render_bezier_connection(from_pin_pos, to_pin_pos, pin_color, cx)
+                Some((Self::build_bezier_path(from_pin_pos, to_pin_pos, 3.5), pin_color))
             } else {
-                div().into_any_element()
+                None
             }
         } else {
-            div().into_any_element()
+            None
         }
     }
 
-    fn render_dragging_connection(
+    fn build_dragging_connection_shape(
         drag: &super::panel::ConnectionDrag,
         panel: &BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
-    ) -> AnyElement {
-        // Find the from node and pin position
+    ) -> Option<(gpui::Path<gpui::Pixels>, gpui::Hsla)> {
         if let Some(from_node) = panel.graph.nodes.iter().find(|n| n.id == drag.source_node) {
             if let Some(from_pin_pos) =
                 Self::calculate_pin_position(from_node, &drag.source_pin, false, &panel.graph)
             {
                 let pin_color = Self::get_pin_color(&drag.source_pin_type, cx);
-
-                // Determine the end position - either target pin or mouse position
                 let end_pos = if let Some((target_node_id, target_pin_id)) = &drag.target_pin {
-                    // If hovering over a compatible pin, connect to that pin
-                    if let Some(target_node) =
-                        panel.graph.nodes.iter().find(|n| n.id == *target_node_id)
-                    {
+                    if let Some(target_node) = panel.graph.nodes.iter().find(|n| n.id == *target_node_id) {
                         Self::calculate_pin_position(target_node, target_pin_id, true, &panel.graph)
                             .unwrap_or(drag.current_mouse_pos)
                     } else {
                         drag.current_mouse_pos
                     }
                 } else {
-                    // Default to mouse position
                     drag.current_mouse_pos
                 };
 
-                // Create bezier curve from pin to end position
-                Self::render_bezier_connection(from_pin_pos, end_pos, pin_color, cx)
+                Some((Self::build_bezier_path(from_pin_pos, end_pos, 3.5), pin_color))
             } else {
-                div().into_any_element()
+                None
             }
         } else {
-            div().into_any_element()
+            None
         }
+    }
+
+    fn build_bezier_path(
+        from_pos: Point<f32>,
+        to_pos: Point<f32>,
+        thickness: f32,
+    ) -> gpui::Path<gpui::Pixels> {
+        let distance = (to_pos.x - from_pos.x).abs();
+        let control_offset = (distance * 0.4).max(50.0).min(150.0);
+        let control1 = gpui::point(gpui::px(from_pos.x + control_offset), gpui::px(from_pos.y));
+        let control2 = gpui::point(gpui::px(to_pos.x - control_offset), gpui::px(to_pos.y));
+
+        let mut builder = gpui::PathBuilder::stroke(gpui::px(thickness));
+        builder.move_to(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)));
+        builder.cubic_bezier_to(
+            gpui::point(gpui::px(to_pos.x), gpui::px(to_pos.y)),
+            control1,
+            control2,
+        );
+
+        builder.build().unwrap_or_else(|_| {
+            let mut fallback = gpui::PathBuilder::stroke(gpui::px(thickness));
+            fallback.move_to(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)));
+            fallback.line_to(gpui::point(gpui::px(to_pos.x), gpui::px(to_pos.y)));
+            fallback.build().unwrap_or_else(|_| {
+                gpui::Path::new(gpui::point(gpui::px(from_pos.x), gpui::px(from_pos.y)))
+            })
+        })
     }
 
     fn get_pin_color(data_type: &DataType, _cx: &mut Context<BlueprintEditorPanel>) -> gpui::Hsla {
