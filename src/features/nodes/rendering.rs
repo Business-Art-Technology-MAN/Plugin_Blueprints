@@ -10,9 +10,11 @@
 use gpui::*;
 use gpui::prelude::*;
 use ui::tooltip::Tooltip;
+use ui::{h_flex, v_flex};
 
 use crate::editor::panel::BlueprintEditorPanel;
 use crate::core::types::*;
+use crate::core::graph::BlueprintGraph;
 use crate::rendering::graph::NodeGraphRenderer;
 use crate::rendering::{layout, style};
 use ui::graph::DataType;
