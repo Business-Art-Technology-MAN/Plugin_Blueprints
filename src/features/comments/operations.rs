@@ -4,6 +4,7 @@
 
 use gpui::*;
 use crate::core::types::BlueprintComment;
+use crate::editor::panel::BlueprintEditorPanel;
 
 /// Resize handle positions for comment boxes
 #[derive(Clone, Debug, PartialEq)]
