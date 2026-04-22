@@ -6,6 +6,8 @@
 use std::path::{Path, PathBuf};
 use gpui::*;
 use crate::editor::panel::BlueprintEditorPanel;
+use crate::editor::tabs::GraphTab;
+use crate::core::types::CompilationState;
 use super::{formats, legacy};
 
 impl BlueprintEditorPanel {
@@ -20,12 +22,16 @@ impl BlueprintEditorPanel {
                 }
                 Err(e) => {
                     tracing::error!("Failed to save blueprint: {}", e);
-                    // TODO: Show error notification to user
+                    self.compilation_status.state = CompilationState::Error;
+                    self.compilation_status.message = format!("Save failed: {}", e);
+                    cx.notify();
                 }
             }
         } else {
             tracing::warn!("No save path set - cannot save blueprint");
-            // TODO: Show save-as dialog
+            self.compilation_status.state = CompilationState::Error;
+            self.compilation_status.message = "Save failed: no file path set".to_string();
+            cx.notify();
         }
     }
 
@@ -40,7 +46,9 @@ impl BlueprintEditorPanel {
                 }
                 Err(e) => {
                     tracing::error!("Failed to reload blueprint: {}", e);
-                    // TODO: Show error notification to user
+                    self.compilation_status.state = CompilationState::Error;
+                    self.compilation_status.message = format!("Reload failed: {}", e);
+                    cx.notify();
                 }
             }
         } else {
@@ -107,10 +115,7 @@ impl BlueprintEditorPanel {
 
     /// Convert current editor state to BlueprintAsset
     fn to_blueprint_asset(&self) -> Result<formats::BlueprintAsset, String> {
-        // TODO: Convert graph to GraphDescription
-        // TODO: Collect local macros
-        // TODO: Collect variables
-        // TODO: Capture editor state
+        let main_graph = self.convert_graph_to_description(&self.graph)?;
 
         // Convert local ClassVariable to ui::ClassVariable
         let variables: Vec<ui::graph::ClassVariable> = self.class_variables.iter()
@@ -124,16 +129,30 @@ impl BlueprintEditorPanel {
             })
             .collect();
 
-        // For now, create a minimal asset
+        let graph_view_states = self
+            .open_tabs
+            .iter()
+            .map(|tab| {
+                (
+                    tab.id.clone(),
+                    ui::graph::GraphViewState {
+                        pan_offset_x: tab.graph.pan_offset.x,
+                        pan_offset_y: tab.graph.pan_offset.y,
+                        zoom: tab.graph.zoom_level,
+                    },
+                )
+            })
+            .collect();
+
         Ok(formats::BlueprintAsset {
             format_version: formats::current_format_version(),
-            main_graph: ui::graph::GraphDescription::new("EventGraph"),
+            main_graph,
             local_macros: self.local_macros.clone(),
             variables,
             editor_state: Some(formats::BlueprintEditorState {
                 open_tab_ids: self.open_tabs.iter().map(|tab| tab.id.clone()).collect(),
                 active_tab_index: self.active_tab_index,
-                graph_view_states: std::collections::HashMap::new(),
+                graph_view_states,
             }),
             blueprint_metadata: Default::default(),
         })
@@ -154,23 +173,7 @@ impl BlueprintEditorPanel {
             ));
         }
 
-        // TODO: Convert GraphDescription to BlueprintGraph
-        // TODO: Load local macros
-        // TODO: Load variables
-        // TODO: Restore editor state
-
-        // For now, just load the main graph
-        self.graph = crate::core::graph::BlueprintGraph {
-            nodes: Vec::new(),
-            connections: Vec::new(),
-            comments: Vec::new(),
-            selected_nodes: Vec::new(),
-            selected_comments: Vec::new(),
-            zoom_level: 1.0,
-            pan_offset: Point::new(0.0, 0.0),
-            virtualization_stats: Default::default(),
-        };
-
+        self.graph = self.convert_graph_description_to_blueprint(&asset.main_graph, window, cx)?;
         self.local_macros = asset.local_macros;
 
         // Convert ui::ClassVariable to local ClassVariable
@@ -181,6 +184,55 @@ impl BlueprintEditorPanel {
                 default_value: v.default_value.clone(),
             })
             .collect();
+
+        self.open_tabs = vec![GraphTab::new_main(self.graph.clone())];
+        self.active_tab_index = 0;
+
+        if let Some(editor_state) = asset.editor_state {
+            for tab_id in &editor_state.open_tab_ids {
+                if tab_id == "main" {
+                    continue;
+                }
+
+                let macro_data = self
+                    .local_macros
+                    .iter()
+                    .find(|m| &m.id == tab_id)
+                    .map(|m| (m.id.clone(), m.name.clone(), m.graph.clone()));
+
+                if let Some((macro_id, macro_name, macro_graph_desc)) = macro_data {
+                    if let Ok(mut macro_graph) = self.convert_graph_description_to_blueprint(&macro_graph_desc, window, cx) {
+                        if let Some(view_state) = editor_state.graph_view_states.get(tab_id) {
+                            macro_graph.pan_offset = Point::new(view_state.pan_offset_x, view_state.pan_offset_y);
+                            macro_graph.zoom_level = view_state.zoom;
+                        }
+
+                        self.open_tabs.push(GraphTab::new_local_macro(
+                            macro_id,
+                            macro_name,
+                            macro_graph,
+                        ));
+                    }
+                }
+            }
+
+            if let Some(main_view) = editor_state.graph_view_states.get("main") {
+                self.graph.pan_offset = Point::new(main_view.pan_offset_x, main_view.pan_offset_y);
+                self.graph.zoom_level = main_view.zoom;
+                if let Some(main_tab) = self.open_tabs.get_mut(0) {
+                    main_tab.graph.pan_offset = self.graph.pan_offset;
+                    main_tab.graph.zoom_level = self.graph.zoom_level;
+                }
+            }
+
+            self.active_tab_index = editor_state
+                .active_tab_index
+                .min(self.open_tabs.len().saturating_sub(1));
+
+            if let Some(active_tab) = self.open_tabs.get(self.active_tab_index) {
+                self.graph = active_tab.graph.clone();
+            }
+        }
 
         cx.notify();
         Ok(())

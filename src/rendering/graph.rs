@@ -238,7 +238,7 @@ impl NodeGraphRenderer {
         panel: &mut BlueprintEditorPanel,
         cx: &mut Context<BlueprintEditorPanel>,
     ) -> impl IntoElement {
-        crate::features::connections::rendering::BlueprintEditorPanel::render_connections(panel, cx)
+        crate::editor::panel::BlueprintEditorPanel::render_connections(panel, cx)
     }
 
     fn render_nodes(

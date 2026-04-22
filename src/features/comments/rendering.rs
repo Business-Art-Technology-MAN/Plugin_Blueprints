@@ -13,7 +13,7 @@ use crate::core::types::BlueprintComment;
 use crate::editor::panel::BlueprintEditorPanel;
 use crate::rendering::graph::NodeGraphRenderer;
 use super::operations::ResizeHandle;
-use ui::Colorize;
+use ui::{Colorize, PixelsExt};
 
 /// Comment rendering methods
 ///
@@ -249,7 +249,7 @@ pub fn render_resize_handle(
     handle: ResizeHandle,
     comment_id: &str,
     size: f32,
-    panel: &BlueprintEditorPanel,
+    _panel: &BlueprintEditorPanel,
     cx: &mut Context<BlueprintEditorPanel>,
 ) -> impl IntoElement {
     let (left, top, cursor) = match handle {
