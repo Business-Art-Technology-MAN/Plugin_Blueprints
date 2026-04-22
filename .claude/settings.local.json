@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(cargo check:*)",
+      "Bash(grep:*)",
+      "Bash(1)"
+    ]
+  }
+}

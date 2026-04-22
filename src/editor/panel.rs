@@ -1,0 +1,1248 @@
+//! Core panel struct and initialization
+//!
+//! This module contains the main `BlueprintEditorPanel` struct definition,
+//! constructors, and basic accessors.
+
+use gpui::*;
+use ui::{
+    input::InputState,
+    resizable::ResizableState,
+};
+use std::collections::HashMap;
+
+use crate::core::{
+    types::*,
+    graph::*,
+    events::*,
+    definitions::NodeDefinitions,
+};
+use ui::graph::DataType;
+use crate::features::variables::ClassVariable;
+use crate::features::connections::operations::ConnectionDrag;
+use super::tabs::GraphTab;
+use ui::graph::{DataType as GraphDataType, LibraryManager, SubGraphDefinition};
+
+/// Main Blueprint Editor Panel struct
+pub struct BlueprintEditorPanel {
+    pub(super) focus_handle: FocusHandle,
+    pub graph: BlueprintGraph,
+
+    // Workspace with full docking support
+    pub(super) workspace: Option<Entity<ui::workspace::Workspace>>,
+
+    // File I/O
+    pub current_class_path: Option<std::path::PathBuf>,
+    pub tab_title: Option<String>,
+
+    // Node drag state
+    pub dragging_node: Option<String>,
+    pub drag_offset: Point<f32>,
+    pub initial_drag_positions: HashMap<String, Point<f32>>,
+    pub node_clipboard: Option<BlueprintNode>,
+
+    // Connection drag state
+    pub dragging_connection: Option<ConnectionDrag>,
+
+    // Panning state
+    pub is_panning: bool,
+    pub pan_start: Point<f32>,
+    pub pan_start_offset: Point<f32>,
+
+    // Selection state
+    pub selection_start: Option<Point<f32>>,
+    pub selection_end: Option<Point<f32>>,
+    pub last_mouse_pos: Option<Point<f32>>,
+
+    // Right-click gesture detection
+    pub right_click_start: Option<Point<f32>>,
+    pub right_click_threshold: f32,
+
+    // Double-click for reroute nodes
+    pub last_click_time: Option<std::time::Instant>,
+    pub last_click_pos: Option<Point<f32>>,
+
+    // Coordinate conversion
+    pub graph_element_bounds: Option<Bounds<Pixels>>,
+
+    // Variables system
+    pub class_variables: Vec<ClassVariable>,
+    pub is_creating_variable: bool,
+    pub variable_name_input: Entity<InputState>,
+    pub variable_type_dropdown: Entity<ui::dropdown::DropdownState<Vec<crate::features::variables::TypeItem>>>,
+    pub dragging_variable: Option<crate::features::variables::VariableDrag>,
+    pub variable_drop_menu_position: Option<Point<f32>>,
+
+    // Comment system
+    pub dragging_comment: Option<String>,
+    pub resizing_comment: Option<(String, ResizeHandle)>,
+    pub editing_comment: Option<String>,
+    pub comment_text_input: Entity<InputState>,
+
+    // Subscriptions
+    pub subscriptions: Vec<Subscription>,
+
+    // Compilation
+    pub compilation_status: CompilationStatus,
+    pub compilation_history: Vec<CompilationHistoryEntry>,
+
+    // Library/macro system
+    pub library_manager: LibraryManager,
+    pub local_macros: Vec<SubGraphDefinition>,
+
+    // Tab system
+    pub open_tabs: Vec<GraphTab>,
+    pub active_tab_index: usize,
+
+    // Overlay toggles
+    pub show_debug_overlay: bool,
+    pub show_minimap: bool,
+    pub show_graph_controls: bool,
+
+    // Sidebar tab states
+    pub left_top_tab: usize,      // 0=Variables, 1=Functions, 2=Macros
+    pub left_bottom_tab: usize,   // 0=Library, 1=Compiler
+    pub right_tab: usize,          // 0=Details, 1=Palette
+
+    // Tab drag state
+    pub dragging_tab: Option<TabDragInfo>,
+
+    pub is_dirty: bool, // Whether there are unsaved changes
+}
+
+/// Information about a tab being dragged
+#[derive(Clone, Debug)]
+pub struct TabDragInfo {
+    pub panel_id: usize,  // Which panel the tab came from
+    pub tab_index: usize, // Which tab is being dragged
+    pub label: String,
+    pub icon: ui::IconName,
+}
+
+/// Compilation history entry
+#[derive(Clone, Debug)]
+pub struct CompilationHistoryEntry {
+    pub timestamp: String,
+    pub state: CompilationState,
+    pub message: String,
+}
+
+/// Resize handle for comment boxes
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResizeHandle {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+impl BlueprintEditorPanel {
+    /// Create a new blueprint editor panel
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_internal(None, window, cx)
+    }
+
+    /// Create a new blueprint editor panel with a file path (for plugin)
+    pub fn new_with_path(
+        file_path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut panel = Self::new_internal(Some(file_path.clone()), window, cx);
+
+        // Blueprint classes are folders containing graph_save.json
+        let graph_file = file_path.join("graph_save.json");
+
+        // Load the blueprint file
+        if let Err(e) = panel.load_blueprint(graph_file.to_str().unwrap(), window, cx) {
+            log::error!("Failed to load blueprint: {}", e);
+            return Err(e.into());
+        }
+
+        log::info!("Loaded blueprint from {:?}", file_path);
+        Ok(panel)
+    }
+
+    /// Create a new blueprint editor panel with a file to load
+    pub fn new_with_file(file_path: std::path::PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut panel = Self::new_internal(Some(file_path.clone()), window, cx);
+
+        // Try to load the blueprint file
+        if let Err(e) = panel.load_blueprint(file_path.to_str().unwrap(), window, cx) {
+            eprintln!("Failed to load blueprint: {}", e);
+        } else {
+            tracing::info!("Loaded blueprint from {:?}", file_path);
+        }
+
+        panel
+    }
+
+    /// Create a new blueprint editor for an engine library (virtual blueprint)
+    pub fn new_for_library(
+        library_id: String,
+        library_name: String,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Self {
+        let mut panel = Self::new_internal(None, window, cx);
+        panel.tab_title = Some(format!("Library: {}", library_name));
+
+        if let Some(main_tab) = panel.open_tabs.get_mut(0) {
+            main_tab.name = format!("{} Overview", library_name);
+        }
+
+        tracing::info!("Created blueprint editor for library: {}", library_name);
+        panel
+    }
+
+    /// Internal constructor with sample graph
+    fn new_internal(
+        project_path: Option<std::path::PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Self {
+        let _resizable_state = ResizableState::new(cx);
+        let _left_sidebar_resizable_state = ResizableState::new(cx);
+
+        // Create demo graph with sample nodes (only if no file is being loaded)
+        let main_graph = if project_path.is_some() {
+            // Empty graph - will be loaded from file
+            BlueprintGraph {
+                nodes: Vec::new(),
+                connections: Vec::new(),
+                comments: Vec::new(),
+                selected_nodes: Vec::new(),
+                selected_comments: Vec::new(),
+                zoom_level: 1.0,
+                pan_offset: Point::new(0.0, 0.0),
+                virtualization_stats: VirtualizationStats::default(),
+            }
+        } else {
+            // No file to load - create sample graph
+            Self::create_sample_graph()
+        };
+
+        Self {
+            focus_handle: cx.focus_handle(),
+            graph: main_graph.clone(),
+            workspace: None,  // Will be initialized in render
+            current_class_path: None,
+            tab_title: None,
+            dragging_node: None,
+            drag_offset: Point::new(0.0, 0.0),
+            initial_drag_positions: HashMap::new(),
+            node_clipboard: None,
+            dragging_connection: None,
+            is_panning: false,
+            pan_start: Point::new(0.0, 0.0),
+            pan_start_offset: Point::new(0.0, 0.0),
+            selection_start: None,
+            selection_end: None,
+            last_mouse_pos: None,
+            right_click_start: None,
+            right_click_threshold: 5.0,
+            last_click_time: None,
+            last_click_pos: None,
+            graph_element_bounds: None,
+            class_variables: Vec::new(),
+            is_creating_variable: false,
+            variable_name_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Variable name...")
+            }),
+            variable_type_dropdown: cx.new(|cx| {
+                ui::dropdown::DropdownState::new(Vec::new(), None, window, cx)
+            }),
+            dragging_variable: None,
+            variable_drop_menu_position: None,
+            dragging_comment: None,
+            resizing_comment: None,
+            editing_comment: None,
+            comment_text_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Comment text...")
+            }),
+            subscriptions: Vec::new(),
+            compilation_status: CompilationStatus::default(),
+            compilation_history: Vec::new(),
+            library_manager: {
+                let mut lib_manager = LibraryManager::default();
+                if let Err(e) = lib_manager.load_all_libraries() {
+                    eprintln!("Failed to load sub-graph libraries: {}", e);
+                }
+                lib_manager
+            },
+            local_macros: Vec::new(),
+            open_tabs: vec![GraphTab {
+                id: "main".to_string(),
+                name: "EventGraph".to_string(),
+                graph: main_graph,
+                is_main: true,
+                is_dirty: false,
+                is_library_macro: false,
+                library_id: None,
+            }],
+            active_tab_index: 0,
+            show_debug_overlay: true,
+            show_minimap: true,
+            show_graph_controls: true,
+            left_top_tab: 0,
+            left_bottom_tab: 0,
+            right_tab: 0,
+            dragging_tab: None,
+            is_dirty: false,
+        }
+    }
+
+    /// Create a sample graph for demonstration - demonstrates all compiler features
+    fn create_sample_graph() -> BlueprintGraph {
+        use crate::core::types::*;
+        use ui::graph::DataType as GraphDataType;
+
+        let mut nodes = Vec::new();
+
+        // Main event node (defines pub fn main())
+        nodes.push(BlueprintNode {
+            id: "main_event".to_string(),
+            definition_id: "main".to_string(),
+            title: "Main".to_string(),
+            icon: "Play".to_string(),
+            node_type: NodeType::Event,
+            position: Point::new(100.0, 200.0),
+            size: Size::new(240.0, 60.0),
+            inputs: vec![],
+            outputs: vec![Pin {
+                id: "Body".to_string(),
+                name: "Body".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("execution"),
+            }],
+            properties: HashMap::new(),
+            is_selected: false,
+            description: "Entry point for the main function".to_string(),
+            color: None,
+        });
+
+        // Pure node: add(2, 3)
+        let mut add_props = HashMap::new();
+        add_props.insert("a".to_string(), "2".to_string());
+        add_props.insert("b".to_string(), "3".to_string());
+
+        nodes.push(BlueprintNode {
+            id: "add_node".to_string(),
+            definition_id: "add".to_string(),
+            title: "Add".to_string(),
+            icon: "Plus".to_string(),
+            node_type: NodeType::Math,
+            position: Point::new(400.0, 80.0),
+            size: Size::new(240.0, 80.0),
+            inputs: vec![
+                Pin {
+                    id: "a".to_string(),
+                    name: "A".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+                Pin {
+                    id: "b".to_string(),
+                    name: "B".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "result".to_string(),
+                name: "Result".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("i64"),
+            }],
+            properties: add_props,
+            is_selected: false,
+            description: "Adds two numbers: (2 + 3) = 5".to_string(),
+            color: None,
+        });
+
+        // Control flow: branch
+        nodes.push(BlueprintNode {
+            id: "branch_node".to_string(),
+            definition_id: "branch".to_string(),
+            title: "Branch".to_string(),
+            icon: "GitBranch".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(400.0, 280.0),
+            size: Size::new(240.0, 80.0),
+            inputs: vec![
+                Pin {
+                    id: "exec".to_string(),
+                    name: "".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "condition".to_string(),
+                    name: "Condition".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("bool"),
+                },
+            ],
+            outputs: vec![
+                Pin {
+                    id: "True".to_string(),
+                    name: "True".to_string(),
+                    pin_type: PinType::Output,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "False".to_string(),
+                    name: "False".to_string(),
+                    pin_type: PinType::Output,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+            ],
+            properties: HashMap::new(),
+            is_selected: false,
+            description: "Branches execution based on a condition.".to_string(),
+            color: None,
+        });
+
+        // Function node: print (true path)
+        let mut print_true_props = HashMap::new();
+        print_true_props.insert(
+            "message".to_string(),
+            "Result is greater than 3!".to_string(),
+        );
+
+        nodes.push(BlueprintNode {
+            id: "print_true".to_string(),
+            definition_id: "print_string".to_string(),
+            title: "Print String".to_string(),
+            icon: "Terminal".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(680.0, 220.0),
+            size: Size::new(260.0, 80.0),
+            inputs: vec![
+                Pin {
+                    id: "exec".to_string(),
+                    name: "".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "message".to_string(),
+                    name: "Message".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("string"),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "exec_out".to_string(),
+                name: "".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("execution"),
+            }],
+            properties: print_true_props,
+            is_selected: false,
+            description: "Prints success message.".to_string(),
+            color: None,
+        });
+
+        // Function node: print (false path)
+        let mut print_false_props = HashMap::new();
+        print_false_props.insert("message".to_string(), "Result is 3 or less.".to_string());
+
+        nodes.push(BlueprintNode {
+            id: "print_false".to_string(),
+            definition_id: "print_string".to_string(),
+            title: "Print String".to_string(),
+            icon: "Terminal".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(680.0, 360.0),
+            size: Size::new(260.0, 80.0),
+            inputs: vec![
+                Pin {
+                    id: "exec".to_string(),
+                    name: "".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("execution"),
+                },
+                Pin {
+                    id: "message".to_string(),
+                    name: "Message".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("string"),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "exec_out".to_string(),
+                name: "".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("execution"),
+            }],
+            properties: print_false_props,
+            is_selected: false,
+            description: "Prints alternative message.".to_string(),
+            color: None,
+        });
+
+        // Pure node: greater than
+        let mut gt_props = HashMap::new();
+        gt_props.insert("b".to_string(), "3".to_string());
+
+        nodes.push(BlueprintNode {
+            id: "greater_node".to_string(),
+            definition_id: "greater_than".to_string(),
+            title: "Greater Than".to_string(),
+            icon: "ChevronRight".to_string(),
+            node_type: NodeType::Logic,
+            position: Point::new(620.0, 80.0),
+            size: Size::new(240.0, 80.0),
+            inputs: vec![
+                Pin {
+                    id: "a".to_string(),
+                    name: "A".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+                Pin {
+                    id: "b".to_string(),
+                    name: "B".to_string(),
+                    pin_type: PinType::Input,
+                    data_type: GraphDataType::from_type_str("i64"),
+                },
+            ],
+            outputs: vec![Pin {
+                id: "result".to_string(),
+                name: "Result".to_string(),
+                pin_type: PinType::Output,
+                data_type: GraphDataType::from_type_str("bool"),
+            }],
+            properties: gt_props,
+            is_selected: false,
+            description: "Checks if A > B: result > 3?".to_string(),
+            color: None,
+        });
+
+        let connections = vec![
+            // Execution: main -> branch
+            Connection {
+                id: "conn_main_branch".to_string(),
+                source_node: "main_event".to_string(),
+                source_pin: "Body".to_string(),
+                target_node: "branch_node".to_string(),
+                target_pin: "exec".to_string(),
+                connection_type: ui::graph::ConnectionType::Execution,
+            },
+            // Data: add -> greater_than
+            Connection {
+                id: "conn_add_gt".to_string(),
+                source_node: "add_node".to_string(),
+                source_pin: "result".to_string(),
+                target_node: "greater_node".to_string(),
+                target_pin: "a".to_string(),
+                connection_type: ui::graph::ConnectionType::Data,
+            },
+            // Data: greater_than -> branch
+            Connection {
+                id: "conn_gt_branch".to_string(),
+                source_node: "greater_node".to_string(),
+                source_pin: "result".to_string(),
+                target_node: "branch_node".to_string(),
+                target_pin: "condition".to_string(),
+                connection_type: ui::graph::ConnectionType::Data,
+            },
+            // Execution: branch(True) -> print_true
+            Connection {
+                id: "conn_branch_true".to_string(),
+                source_node: "branch_node".to_string(),
+                source_pin: "True".to_string(),
+                target_node: "print_true".to_string(),
+                target_pin: "exec".to_string(),
+                connection_type: ui::graph::ConnectionType::Execution,
+            },
+            // Execution: branch(False) -> print_false
+            Connection {
+                id: "conn_branch_false".to_string(),
+                source_node: "branch_node".to_string(),
+                source_pin: "False".to_string(),
+                target_node: "print_false".to_string(),
+                target_pin: "exec".to_string(),
+                connection_type: ui::graph::ConnectionType::Execution,
+            },
+        ];
+
+        BlueprintGraph {
+            nodes,
+            connections,
+            comments: vec![],
+            selected_nodes: vec![],
+            selected_comments: vec![],
+            zoom_level: 1.0,
+            pan_offset: Point::new(0.0, 0.0),
+            virtualization_stats: VirtualizationStats::default(),
+        }
+    }
+
+    /// Get immutable reference to graph
+    pub fn get_graph(&self) -> &BlueprintGraph {
+        &self.graph
+    }
+
+    /// Get mutable reference to graph
+    pub fn get_graph_mut(&mut self) -> &mut BlueprintGraph {
+        &mut self.graph
+    }
+
+    /// Get focus handle
+    pub fn focus_handle(&self) -> &FocusHandle {
+        &self.focus_handle
+    }
+
+    // ============================================================================
+    // Comment Operations
+    // ============================================================================
+
+    /// Update comment drag position
+    pub fn update_comment_drag(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        if let Some(comment_id) = &self.dragging_comment.clone() {
+            let new_position = Point::new(
+                mouse_pos.x - self.drag_offset.x,
+                mouse_pos.y - self.drag_offset.y,
+            );
+
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                let delta = Point::new(
+                    new_position.x - comment.position.x,
+                    new_position.y - comment.position.y,
+                );
+
+                comment.position = new_position;
+
+                // Move all contained nodes with the comment
+                for node_id in &comment.contained_node_ids.clone() {
+                    if let Some(node) = self.graph.nodes.iter_mut().find(|n| n.id == *node_id) {
+                        node.position.x += delta.x;
+                        node.position.y += delta.y;
+                    }
+                }
+
+                cx.notify();
+            }
+        }
+    }
+
+    /// End comment drag and update contained nodes
+    pub fn end_comment_drag(&mut self, cx: &mut Context<Self>) {
+        if let Some(comment_id) = &self.dragging_comment.clone() {
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                comment.update_contained_nodes(&self.graph.nodes);
+            }
+        }
+
+        self.dragging_comment = None;
+        cx.notify();
+    }
+
+    /// Update comment resize based on handle being dragged
+    pub fn update_comment_resize(&mut self, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
+        if let Some((comment_id, handle)) = &self.resizing_comment.clone() {
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                let delta_x = mouse_pos.x - self.drag_offset.x;
+                let delta_y = mouse_pos.y - self.drag_offset.y;
+
+                match handle {
+                    ResizeHandle::TopLeft => {
+                        comment.position.x += delta_x;
+                        comment.position.y += delta_y;
+                        comment.size.width -= delta_x;
+                        comment.size.height -= delta_y;
+                    }
+                    ResizeHandle::TopRight => {
+                        comment.position.y += delta_y;
+                        comment.size.width += delta_x;
+                        comment.size.height -= delta_y;
+                    }
+                    ResizeHandle::BottomLeft => {
+                        comment.position.x += delta_x;
+                        comment.size.width -= delta_x;
+                        comment.size.height += delta_y;
+                    }
+                    ResizeHandle::BottomRight => {
+                        comment.size.width += delta_x;
+                        comment.size.height += delta_y;
+                    }
+                    ResizeHandle::Top => {
+                        comment.position.y += delta_y;
+                        comment.size.height -= delta_y;
+                    }
+                    ResizeHandle::Bottom => {
+                        comment.size.height += delta_y;
+                    }
+                    ResizeHandle::Left => {
+                        comment.position.x += delta_x;
+                        comment.size.width -= delta_x;
+                    }
+                    ResizeHandle::Right => {
+                        comment.size.width += delta_x;
+                    }
+                }
+
+                // Enforce minimum size
+                comment.size.width = comment.size.width.max(100.0);
+                comment.size.height = comment.size.height.max(50.0);
+
+                self.drag_offset = mouse_pos;
+                cx.notify();
+            }
+        }
+    }
+
+    /// End comment resize and update contained nodes
+    pub fn end_comment_resize(&mut self, cx: &mut Context<Self>) {
+        if let Some((comment_id, _)) = &self.resizing_comment.clone() {
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                comment.update_contained_nodes(&self.graph.nodes);
+            }
+        }
+
+        self.resizing_comment = None;
+        cx.notify();
+    }
+
+    /// Finish editing comment text and save changes
+    pub fn finish_comment_editing(&mut self, cx: &mut Context<Self>) {
+        if let Some(comment_id) = &self.editing_comment.clone() {
+            let new_text = self.comment_text_input.read(cx).text().to_string();
+
+            if let Some(comment) = self.graph.comments.iter_mut().find(|c| c.id == *comment_id) {
+                comment.text = new_text;
+            }
+
+            self.editing_comment = None;
+            cx.notify();
+        }
+    }
+
+    /// Create a new comment at the center of the current view
+    pub fn create_comment_at_center(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::features::viewport::coordinates::screen_to_graph_pos;
+
+        // Calculate center of current viewport
+        let center_screen = Point::new(1920.0 / 2.0, 1080.0 / 2.0);
+
+        // Convert to graph coordinates
+        let center_graph = screen_to_graph_pos(
+            gpui::Point::new(px(center_screen.x), px(center_screen.y)),
+            &self.graph,
+        );
+
+        self.add_comment(center_graph, window, cx);
+    }
+
+    /// Add a new comment at the specified position
+    pub fn add_comment(&mut self, position: Point<f32>, window: &mut Window, cx: &mut Context<Self>) {
+        let new_comment = BlueprintComment::new(position, window, cx);
+
+        // Subscribe to color picker changes
+        if let Some(picker_state) = new_comment.color_picker_state.as_ref() {
+            let comment_id = new_comment.id.clone();
+            let _ = cx.subscribe_in(
+                picker_state,
+                window,
+                move |this: &mut BlueprintEditorPanel,
+                      _picker,
+                      event: &ui::color_picker::ColorPickerEvent,
+                      _window,
+                      cx| {
+                    if let ui::color_picker::ColorPickerEvent::Change(Some(color)) = event {
+                        if let Some(comment) = this.graph.comments.iter_mut().find(|c| c.id == comment_id) {
+                            comment.color = *color;
+                            cx.notify();
+                        }
+                    }
+                },
+            );
+        }
+
+        self.graph.comments.push(new_comment);
+        cx.notify();
+    }
+
+    // ============================================================================
+    // Tab Operations
+    // ============================================================================
+
+    /// Switch to a different tab
+    pub fn switch_to_tab(&mut self, tab_index: usize, cx: &mut Context<Self>) {
+        if tab_index < self.open_tabs.len() && tab_index != self.active_tab_index {
+            self.sync_graph_to_active_tab();
+            self.active_tab_index = tab_index;
+            self.load_active_tab_graph();
+            cx.notify();
+        }
+    }
+
+    /// Sync current graph to active tab
+    pub fn sync_graph_to_active_tab(&mut self) {
+        let tab_id = if let Some(tab) = self.open_tabs.get(self.active_tab_index) {
+            tab.id.clone()
+        } else {
+            return;
+        };
+
+        let is_main = if let Some(tab) = self.open_tabs.get(self.active_tab_index) {
+            tab.is_main
+        } else {
+            return;
+        };
+
+        if let Some(tab) = self.open_tabs.get_mut(self.active_tab_index) {
+            tab.graph = self.graph.clone();
+            tab.is_dirty = true;
+        }
+
+        // Sync local macros
+        if !is_main && !tab_id.starts_with("🌐") {
+            if let Some(_macro_def) = self.local_macros.iter_mut().find(|m| m.id == tab_id) {
+                // Graph conversion would happen here if needed
+            }
+        }
+    }
+
+    /// Load active tab's graph
+    pub fn load_active_tab_graph(&mut self) {
+        if let Some(tab) = self.open_tabs.get(self.active_tab_index) {
+            self.graph = tab.graph.clone();
+        }
+    }
+
+    // ============================================================================
+    // Menu Operations
+    // ============================================================================
+
+    /// Show node picker at graph position
+    pub fn show_node_picker(
+        &mut self,
+        graph_pos: Point<f32>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Emit event to request node picker from global palette
+        cx.emit(ShowNodePickerRequest {
+            graph_position: graph_pos,
+        });
+    }
+
+    // ============================================================================
+    // File I/O Operations
+    // ============================================================================
+
+    /// Load blueprint from file
+    pub fn load_blueprint(
+        &mut self,
+        file_path: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("📂 LOADING BLUEPRINT FROM FILE");
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("📂 File: {}", file_path);
+
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| {
+                let error_msg = format!("Failed to read file: {}", e);
+                eprintln!("❌ {}", error_msg);
+                error_msg
+            })?;
+
+        tracing::info!("📂 ✓ File read successfully ({} bytes)", content.len());
+
+        // Strip header comments
+        let json = content.lines()
+            .skip_while(|line| line.trim().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Try new unified format first
+        match serde_json::from_str::<ui::graph::BlueprintAsset>(&json) {
+            Ok(blueprint_asset) => {
+                tracing::info!("📂 ✓ Detected unified blueprint format");
+                self.load_from_blueprint_asset(blueprint_asset, file_path, window, cx)?;
+            },
+            Err(unified_err) => {
+                tracing::info!("📂 ⚠️  Unified format parse failed:");
+                tracing::info!("📂    Error: {}", unified_err);
+                tracing::info!("📂    Line: {}, Column: {}", unified_err.line(), unified_err.column());
+
+                // Show context around the error location
+                let lines: Vec<&str> = json.lines().collect();
+                let error_line = unified_err.line().saturating_sub(1);
+                if error_line < lines.len() {
+                    tracing::info!("📂    Context:");
+                    for i in error_line.saturating_sub(2)..=error_line.saturating_add(2).min(lines.len().saturating_sub(1)) {
+                        tracing::info!("📂      {}{}: {}",
+                            if i == error_line { ">>> " } else { "    " },
+                            i + 1,
+                            lines.get(i).unwrap_or(&"")
+                        );
+                    }
+                }
+
+                tracing::info!("📂 ✓ Trying legacy format...");
+
+                // Try parsing as legacy format
+                self.load_legacy_format(&json, file_path, window, cx)
+                    .map_err(|e| {
+                        let error_msg = format!("Failed to parse as both unified and legacy format.\nUnified error: {}\nLegacy error: {}", unified_err, e);
+                        eprintln!("❌ {}", error_msg);
+                        error_msg
+                    })?;
+            }
+        }
+
+        // Reload library manager
+        self.library_manager = ui::graph::LibraryManager::default();
+        if let Err(e) = self.library_manager.load_all_libraries() {
+            eprintln!("Failed to reload sub-graph libraries: {}", e);
+        }
+
+        cx.notify();
+        Ok(())
+    }
+
+    /// Load from unified blueprint asset
+    fn load_from_blueprint_asset(
+        &mut self,
+        asset: ui::graph::BlueprintAsset,
+        file_path: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let file_path_buf = std::path::Path::new(file_path);
+        if let Some(parent) = file_path_buf.parent() {
+            self.current_class_path = Some(parent.to_path_buf());
+        }
+
+        // Load main graph
+        self.graph = self.convert_graph_description_to_blueprint(&asset.main_graph, window, cx)?;
+
+        // Load local macros
+        self.local_macros = asset.local_macros;
+
+        // Load variables
+        self.class_variables = asset.variables.iter().map(|v| {
+            ClassVariable {
+                name: v.name.clone(),
+                var_type: format!("{:?}", v.data_type),
+                default_value: v.default_value.clone(),
+            }
+        }).collect();
+
+        // Restore main tab
+        self.open_tabs = vec![GraphTab {
+            id: "main".to_string(),
+            name: "EventGraph".to_string(),
+            graph: self.graph.clone(),
+            is_main: true,
+            is_dirty: false,
+            is_library_macro: false,
+            library_id: None,
+        }];
+        self.active_tab_index = 0;
+
+        // Restore editor state (open tabs, active tab, view states)
+        if let Some(editor_state) = asset.editor_state {
+            // Restore open tabs
+            for tab_id in &editor_state.open_tab_ids {
+                if tab_id == "main" {
+                    continue; // Already added
+                }
+
+                // Check if this is a local macro
+                let macro_data = self.local_macros.iter()
+                    .find(|m| &m.id == tab_id)
+                    .map(|m| (m.name.clone(), m.graph.clone()));
+
+                if let Some((macro_name, macro_graph)) = macro_data {
+                    if let Ok(mut blueprint_graph) = self.convert_graph_description_to_blueprint(&macro_graph, window, cx) {
+                        // Restore view state for this tab if available
+                        if let Some(view_state) = editor_state.graph_view_states.get(tab_id) {
+                            blueprint_graph.pan_offset = Point {
+                                x: view_state.pan_offset_x,
+                                y: view_state.pan_offset_y,
+                            };
+                            blueprint_graph.zoom_level = view_state.zoom;
+                        }
+
+                        self.open_tabs.push(GraphTab {
+                            id: tab_id.clone(),
+                            name: macro_name,
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: false,
+                            library_id: None,
+                        });
+                    }
+                }
+            }
+
+            // Restore view state for main tab
+            if let Some(view_state) = editor_state.graph_view_states.get("main") {
+                if let Some(main_tab) = self.open_tabs.iter_mut().find(|t| t.is_main) {
+                    main_tab.graph.pan_offset = Point {
+                        x: view_state.pan_offset_x,
+                        y: view_state.pan_offset_y,
+                    };
+                    main_tab.graph.zoom_level = view_state.zoom;
+                }
+
+                self.graph.pan_offset = Point {
+                    x: view_state.pan_offset_x,
+                    y: view_state.pan_offset_y,
+                };
+                self.graph.zoom_level = view_state.zoom;
+            }
+
+            // Restore active tab index (with bounds check)
+            self.active_tab_index = editor_state.active_tab_index.min(self.open_tabs.len().saturating_sub(1));
+
+            // Load the active tab's graph into self.graph
+            if let Some(active_tab) = self.open_tabs.get(self.active_tab_index) {
+                self.graph = active_tab.graph.clone();
+            }
+        }
+
+        tracing::info!("📂 Loaded unified blueprint format");
+        tracing::info!("📂   ✓ Main Graph: {} nodes", self.graph.nodes.len());
+        tracing::info!("📂   ✓ Local Macros: {}", self.local_macros.len());
+        tracing::info!("📂   ✓ Variables: {}", self.class_variables.len());
+        tracing::info!("📂   ✓ Open Tabs: {}", self.open_tabs.len());
+        tracing::info!("📂   ✓ Active Tab Index: {}", self.active_tab_index);
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+
+        Ok(())
+    }
+
+    /// Load legacy format (old format before unified blueprint)
+    fn load_legacy_format(
+        &mut self,
+        json: &str,
+        file_path: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        // Define legacy structures inline for backward compatibility
+        #[derive(serde::Deserialize)]
+        struct LegacyGraphDescription {
+            pub nodes: HashMap<String, ui::graph::NodeInstance>,
+            pub connections: Vec<ui::graph::Connection>,
+            pub metadata: ui::graph::GraphMetadata,
+            #[serde(default)]
+            pub comments: Vec<LegacyBlueprintComment>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacyBlueprintComment {
+            pub id: String,
+            pub text: String,
+            pub position: LegacyPosition,
+            pub size: LegacySize,
+            pub color: LegacyColor,
+            pub contained_node_ids: Vec<String>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacyPosition {
+            pub x: f32,
+            pub y: f32,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacySize {
+            pub width: f32,
+            pub height: f32,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct LegacyColor {
+            pub h: f32,
+            pub s: f32,
+            pub l: f32,
+            pub a: f32,
+        }
+
+        let legacy_graph: LegacyGraphDescription = serde_json::from_str(json)
+            .map_err(|e| format!("Failed to parse legacy format: {}", e))?;
+
+        tracing::info!("📂 ✓ Legacy format parsed successfully");
+
+        // Convert legacy format to current format
+        let graph_description = ui::graph::GraphDescription {
+            nodes: legacy_graph.nodes,
+            connections: legacy_graph.connections,
+            metadata: legacy_graph.metadata,
+            comments: legacy_graph.comments.into_iter().map(|c| {
+                let (r, g, b) = hsl_to_rgb(c.color.h, c.color.s, c.color.l);
+                ui::graph::BlueprintComment {
+                    id: c.id,
+                    text: c.text,
+                    position: (c.position.x, c.position.y),
+                    size: (c.size.width, c.size.height),
+                    color: [r, g, b, c.color.a],
+                    contained_node_ids: c.contained_node_ids,
+                }
+            }).collect(),
+        };
+
+        self.graph = self.convert_graph_description_to_blueprint(&graph_description, window, cx)?;
+
+        // Reset to main tab
+        self.open_tabs = vec![GraphTab {
+            id: "main".to_string(),
+            name: "EventGraph".to_string(),
+            graph: self.graph.clone(),
+            is_main: true,
+            is_dirty: false,
+            is_library_macro: false,
+            library_id: None,
+        }];
+        self.active_tab_index = 0;
+
+        // Load separate legacy files
+        let file_path_buf = std::path::Path::new(file_path);
+        if let Some(parent) = file_path_buf.parent() {
+            self.current_class_path = Some(parent.to_path_buf());
+            let _ = self.load_local_macros(parent);
+            let _ = self.restore_tabs_state(parent, window, cx);
+            let _ = self.load_variables_from_class(parent);
+        }
+
+        tracing::info!("📂 Loaded blueprint in legacy format");
+        Ok(())
+    }
+
+    /// Load local macros from macros.json
+    fn load_local_macros(&mut self, class_path: &std::path::Path) -> Result<(), String> {
+        let macros_file = class_path.join("macros.json");
+        if !macros_file.exists() {
+            self.local_macros.clear();
+            return Ok(());
+        }
+
+        let content = std::fs::read_to_string(&macros_file)
+            .map_err(|e| format!("Failed to read macros.json: {}", e))?;
+        let macros: Vec<ui::graph::SubGraphDefinition> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse macros.json: {}", e))?;
+
+        self.local_macros = macros;
+        tracing::info!("📂 Loaded {} local macros from macros.json", self.local_macros.len());
+        Ok(())
+    }
+
+    /// Restore tabs from tabs.json
+    fn restore_tabs_state(
+        &mut self,
+        class_path: &std::path::Path,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Result<(), String> {
+        #[derive(serde::Deserialize)]
+        struct SerializedGraphTab {
+            pub id: String,
+            pub name: String,
+            pub is_main: bool,
+            pub is_library_macro: bool,
+            pub library_id: Option<String>,
+        }
+
+        let tabs_file = class_path.join("tabs.json");
+        if !tabs_file.exists() {
+            return Ok(());
+        }
+
+        let content = std::fs::read_to_string(&tabs_file)
+            .map_err(|e| format!("Failed to read tabs.json: {}", e))?;
+        let serialized_tabs: Vec<SerializedGraphTab> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse tabs.json: {}", e))?;
+
+        self.open_tabs.retain(|tab| tab.is_main);
+        self.active_tab_index = 0;
+
+        for ser_tab in serialized_tabs {
+            if ser_tab.is_main {
+                continue;
+            }
+
+            if ser_tab.is_library_macro {
+                let macro_graph = self.library_manager.get_subgraph(&ser_tab.id)
+                    .map(|m| m.graph.clone());
+
+                if let Some(graph) = macro_graph {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph, window, cx) {
+                        self.open_tabs.push(GraphTab {
+                            id: ser_tab.id.clone(),
+                            name: ser_tab.name.clone(),
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: true,
+                            library_id: ser_tab.library_id.clone(),
+                        });
+                    }
+                }
+            } else {
+                let macro_graph = self.local_macros.iter()
+                    .find(|m| m.id == ser_tab.id)
+                    .map(|m| m.graph.clone());
+
+                if let Some(graph) = macro_graph {
+                    if let Ok(blueprint_graph) = self.convert_graph_description_to_blueprint(&graph, window, cx) {
+                        self.open_tabs.push(GraphTab {
+                            id: ser_tab.id.clone(),
+                            name: ser_tab.name.clone(),
+                            graph: blueprint_graph,
+                            is_main: false,
+                            is_dirty: false,
+                            is_library_macro: false,
+                            library_id: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        tracing::info!("📂 Restored {} tabs from tabs.json", self.open_tabs.len());
+        Ok(())
+    }
+}
+
+// Helper function for HSL to RGB conversion
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+    if s == 0.0 {
+        return (l, l, l);
+    }
+
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
+
+    let hue_to_rgb = |p: f32, q: f32, mut t: f32| -> f32 {
+        if t < 0.0 { t += 1.0; }
+        if t > 1.0 { t -= 1.0; }
+        if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
+        if t < 1.0 / 2.0 { return q; }
+        if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+        p
+    };
+
+    (
+        hue_to_rgb(p, q, h + 1.0 / 3.0),
+        hue_to_rgb(p, q, h),
+        hue_to_rgb(p, q, h - 1.0 / 3.0),
+    )
+}

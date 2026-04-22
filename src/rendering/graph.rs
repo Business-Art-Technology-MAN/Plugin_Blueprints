@@ -1,0 +1,440 @@
+//!
+//! This module is responsible for:
+//! - Main render() method that composes all feature renderers
+//! - Grid background rendering
+//! - Coordinate conversion utilities
+//! - Viewport culling/virtualization helpers
+//! Main graph canvas renderer - orchestrates all rendering features
+use gpui::prelude::FluentBuilder;
+use gpui::*;
+use gpui::prelude::*;
+use ui::{Colorize, PixelsExt, ActiveTheme, button::{Button, ButtonVariants}, h_flex, v_flex, IconName, Sizable, StyledExt, tooltip::Tooltip};
+
+use crate::rendering::{layout, style};
+use crate::editor::panel::BlueprintEditorPanel;
+use crate::{BlueprintNode, BlueprintGraph, Pin, NodeType, Connection};
+use ui::graph::DataType;
+
+pub struct NodeGraphRenderer;
+
+/// Helper to create simple text tooltip for pins (still using gpui's built-in tooltip)
+fn create_text_tooltip(text: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |window, cx| {
+        Tooltip::new(text).build(window, cx)
+    }
+}
+
+impl NodeGraphRenderer {
+    /// Main render method that orchestrates all graph rendering
+    pub fn render(
+        panel: &mut BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        let focus_handle = panel.focus_handle().clone();
+        let graph_id = "blueprint-graph";
+        let panel_entity = cx.entity().clone();
+
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .relative()
+            .bg(cx.theme().muted.opacity(0.1))
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded(cx.theme().radius)
+            .overflow_hidden()
+            .track_focus(&focus_handle)
+            .key_context("BlueprintGraph")
+            .on_children_prepainted({
+                let panel_entity = panel_entity.clone();
+                move |children_bounds, _window, cx| {
+                    // children_bounds are in WINDOW coordinates!
+                    // Calculate the bounding box of all children to get our element's window-relative bounds
+                    if !children_bounds.is_empty() {
+                        let mut min_x = f32::MAX;
+                        let mut min_y = f32::MAX;
+                        let mut max_x = f32::MIN;
+                        let mut max_y = f32::MIN;
+
+                        for child_bounds in &children_bounds {
+                            min_x = min_x.min(child_bounds.origin.x.as_f32());
+                            min_y = min_y.min(child_bounds.origin.y.as_f32());
+                            max_x = max_x.max((child_bounds.origin.x + child_bounds.size.width).as_f32());
+                            max_y = max_y.max((child_bounds.origin.y + child_bounds.size.height).as_f32());
+                        }
+
+                        let origin = gpui::Point { x: px(min_x), y: px(min_y) };
+                        let size = gpui::Size {
+                            width: px(max_x - min_x),
+                            height: px(max_y - min_y),
+                        };
+
+                        // Store the graph element's bounds derived from children (which are in window coords)
+                        panel_entity.update(cx, |panel, _cx| {
+                            panel.graph_element_bounds = Some(gpui::Bounds { origin, size });
+                        });
+                    }
+                }
+            })
+            .id(graph_id)
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |panel, event, window, cx| {
+                // Focus on click to enable keyboard events
+                panel.focus_handle().focus(window);
+
+                // If editing a comment, clicking outside should save and exit edit mode
+                if panel.editing_comment.is_some() {
+                    panel.finish_comment_editing(cx);
+                }
+
+                // Close variable drop menu if it's open
+                if panel.variable_drop_menu_position.is_some() {
+                    panel.variable_drop_menu_position = None;
+                    cx.notify();
+                }
+            }))
+            // Render layers in correct z-order
+            .child(Self::render_comments(panel, cx))
+            .child(Self::render_connections(panel, cx))
+            .child(Self::render_nodes(panel, cx))
+            .child(crate::rendering::overlay::render_selection_box(panel, cx))
+            .child(crate::rendering::overlay::render_viewport_bounds_debug(panel, cx))
+            .when(panel.show_debug_overlay, |this| {
+                this.child(crate::rendering::overlay::render_debug_overlay(panel, cx))
+            })
+            .when(panel.show_graph_controls, |this| {
+                this.child(crate::rendering::overlay::render_graph_controls(panel, cx))
+            })
+            // Minimap disabled for now - will be implemented in ui_components
+            // .when(panel.show_minimap, |this| {
+            //     this.child(crate::ui_components::minimap::MinimapRenderer::render(panel, cx))
+            // })
+            // Attach all input handlers from rendering::input module
+            .on_mouse_down(
+                gpui::MouseButton::Right,
+                crate::rendering::input::on_mouse_down_right(cx),
+            )
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                crate::rendering::input::on_mouse_down_left(cx),
+            )
+            .on_mouse_move(crate::rendering::input::on_mouse_move(cx))
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                crate::rendering::input::on_mouse_up_left(cx),
+            )
+            .on_mouse_up(
+                gpui::MouseButton::Right,
+                crate::rendering::input::on_mouse_up_right(cx),
+            )
+            .on_scroll_wheel(crate::rendering::input::on_scroll_wheel(cx))
+            .on_key_down(crate::rendering::input::on_key_down(cx))
+    }
+
+    /// WARNING: For reasons uninvestigated this causes EXTREME performance degradation at some zoom levels
+    pub fn render_grid_background(panel: &BlueprintEditorPanel, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+        // Multi-scale grid system that shows/hides based on zoom level
+        // Grid scales: 50px (fine), 200px (medium), 1000px (coarse)
+        let zoom = panel.graph.zoom_level;
+        let pan = &panel.graph.pan_offset;
+
+        // Define grid scales and their visibility thresholds
+        let grids = [
+            (50.0, 0.5, 1.5, 0.15),   // Fine grid: visible between 0.5x and 1.5x zoom, low opacity
+            (200.0, 0.3, 2.0, 0.25),  // Medium grid: visible between 0.3x and 2.0x zoom
+            (1000.0, 0.1, 10.0, 0.35), // Coarse grid: always visible, higher opacity
+        ];
+
+        let mut grid_layers = Vec::new();
+
+        for (grid_size, min_zoom, max_zoom, base_opacity) in grids {
+            // Skip grids outside their zoom range
+            if zoom < min_zoom || zoom > max_zoom {
+                continue;
+            }
+
+            // Fade in/out at edges of zoom range
+            let fade_range = 0.2_f32;
+            let fade_in = ((zoom - min_zoom) / (min_zoom * fade_range)).min(1.0_f32);
+            let fade_out = ((max_zoom - zoom) / (max_zoom * fade_range)).min(1.0_f32);
+            let fade = fade_in.min(fade_out).max(0.0_f32);
+            let opacity = base_opacity * fade;
+
+            if opacity > 0.01 {
+                grid_layers.push(Self::render_grid_layer(grid_size, opacity, pan, zoom, cx));
+            }
+        }
+
+        div().absolute().inset_0()
+            .bg(cx.theme().muted.opacity(0.05))
+            .children(grid_layers)
+    }
+
+    pub fn render_grid_layer(
+        grid_size: f32,
+        opacity: f32,
+        pan: &Point<f32>,
+        zoom: f32,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        // Calculate visible grid range
+        let scaled_grid_size = grid_size * zoom;
+
+        // Calculate grid offset based on pan
+        let offset_x = (pan.x * zoom) % scaled_grid_size;
+        let offset_y = (pan.y * zoom) % scaled_grid_size;
+
+        // Render grid dots
+        let viewport_width = 3840.0;
+        let viewport_height = 2160.0;
+
+        let grid_color = cx.theme().border.opacity(opacity);
+        let dot_size = 2.0;
+
+        let mut dots = Vec::new();
+
+        // Calculate number of grid lines needed
+        let num_cols = (viewport_width / scaled_grid_size).ceil() as i32 + 2;
+        let num_rows = (viewport_height / scaled_grid_size).ceil() as i32 + 2;
+
+        for col in 0..num_cols {
+            for row in 0..num_rows {
+                let x = offset_x + (col as f32 * scaled_grid_size);
+                let y = offset_y + (row as f32 * scaled_grid_size);
+
+                if x >= -scaled_grid_size && x <= viewport_width + scaled_grid_size
+                    && y >= -scaled_grid_size && y <= viewport_height + scaled_grid_size {
+                    dots.push(
+                        div()
+                            .absolute()
+                            .left(px(x - dot_size / 2.0))
+                            .top(px(y - dot_size / 2.0))
+                            .w(px(dot_size))
+                            .h(px(dot_size))
+                            .bg(grid_color)
+                            .rounded_full()
+                    );
+                }
+            }
+        }
+
+        div()
+            .absolute()
+            .inset_0()
+            .children(dots)
+    }
+
+    // ── Feature rendering delegation ──────────────────────────────────────
+    // These methods delegate to feature modules for rendering specific aspects
+
+    fn render_comments(
+        panel: &mut BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        crate::features::comments::rendering::render_all(panel, cx)
+    }
+
+    fn render_connections(
+        panel: &mut BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        crate::editor::panel::BlueprintEditorPanel::render_connections(panel, cx)
+    }
+
+    fn render_nodes(
+        panel: &mut BlueprintEditorPanel,
+        cx: &mut Context<BlueprintEditorPanel>,
+    ) -> impl IntoElement {
+        crate::features::nodes::rendering::render_all(panel, cx)
+    }
+
+    // ── Coordinate conversion utilities ───────────────────────────────────
+
+    /// Convert graph coordinates to screen coordinates (accounting for pan and zoom)
+    pub fn graph_to_screen_pos(graph_pos: Point<f32>, graph: &BlueprintGraph) -> Point<f32> {
+        Point::new(
+            (graph_pos.x + graph.pan_offset.x) * graph.zoom_level,
+            (graph_pos.y + graph.pan_offset.y) * graph.zoom_level,
+        )
+    }
+
+    /// Convert window-relative coordinates to graph element coordinates
+    /// For graph operations: clicking nodes, selection box, dragging, etc.
+    ///
+    /// Mouse events from GPUI are relative to window origin.
+    /// We already have the graph element's bounds captured during events.
+    /// Simple math: element_pos = window_pos - element_origin
+    pub fn window_to_graph_element_pos(window_pos: Point<Pixels>, panel: &BlueprintEditorPanel) -> Point<Pixels> {
+        if let Some(bounds) = &panel.graph_element_bounds {
+            // Direct subtraction: mouse relative to element = mouse relative to window - element origin relative to window
+            Point::new(
+                window_pos.x - bounds.origin.x,
+                window_pos.y - bounds.origin.y,
+            )
+        } else {
+            // On first event before bounds captured, just return window pos as-is
+            // This will be corrected on the next event after bounds are set
+            window_pos
+        }
+    }
+
+    /// Convert window-relative coordinates to panel coordinates
+    /// For UI elements positioned at panel level: menus, tooltips, etc.
+    pub fn window_to_panel_pos(window_pos: Point<Pixels>, panel: &BlueprintEditorPanel) -> Point<Pixels> {
+        // Same calculation as graph element since they share the same coordinate space
+        Self::window_to_graph_element_pos(window_pos, panel)
+    }
+
+    /// Convert screen coordinates to graph coordinates (inverse of graph_to_screen_pos)
+    pub fn screen_to_graph_pos(screen_pos: Point<Pixels>, graph: &BlueprintGraph) -> Point<f32> {
+        Point::new(
+            (screen_pos.x.as_f32() / graph.zoom_level) - graph.pan_offset.x,
+            (screen_pos.y.as_f32() / graph.zoom_level) - graph.pan_offset.y,
+        )
+    }
+
+    /// Snaps a position to the appropriate grid size based on zoom level
+    pub fn snap_to_grid(pos: Point<f32>, zoom_level: f32) -> Point<f32> {
+        // Choose grid size based on zoom level
+        // Use finer grids when zoomed in, coarser grids when zoomed out
+        let grid_size = if zoom_level >= 1.5 {
+            50.0  // Fine grid
+        } else if zoom_level >= 0.5 {
+            50.0  // Fine grid
+        } else if zoom_level >= 0.3 {
+            200.0 // Medium grid
+        } else {
+            1000.0 // Coarse grid
+        };
+
+        Point::new(
+            (pos.x / grid_size).round() * grid_size,
+            (pos.y / grid_size).round() * grid_size,
+        )
+    }
+
+    // ── Viewport culling / Virtualization helpers ─────────────────────────
+
+    /// Check if a node is visible within the current viewport (for virtualization)
+    pub fn is_node_visible_simple(node: &BlueprintNode, graph: &BlueprintGraph) -> bool {
+        // Calculate node position in screen coordinates
+        let node_screen_pos = Self::graph_to_screen_pos(node.position, graph);
+        let _node_screen_size = Size::new(
+            node.size.width * graph.zoom_level,
+            node.size.height * graph.zoom_level,
+        );
+
+        // Calculate the visible area based on the inverse of current pan/zoom
+        // This creates a dynamic culling frustum that properly accounts for viewport transformations
+
+        // Convert screen bounds back to graph space for accurate culling
+        let screen_to_graph_origin = Self::screen_to_graph_pos(Point::new(px(0.0), px(0.0)), graph);
+        let screen_to_graph_end =
+            Self::screen_to_graph_pos(Point::new(px(3840.0), px(2160.0)), graph); // 4K bounds
+
+        // Add generous padding in graph space to prevent premature culling
+        let padding_in_graph_space = 200.0 / graph.zoom_level; // Padding scales with zoom
+
+        let visible_left = screen_to_graph_origin.x - padding_in_graph_space;
+        let visible_top = screen_to_graph_origin.y - padding_in_graph_space;
+        let visible_right = screen_to_graph_end.x + padding_in_graph_space;
+        let visible_bottom = screen_to_graph_end.y + padding_in_graph_space;
+
+        // Check if node intersects with visible bounds in graph space
+        let node_left = node.position.x;
+        let node_top = node.position.y;
+        let node_right = node.position.x + node.size.width;
+        let node_bottom = node.position.y + node.size.height;
+
+        !(node_left > visible_right
+            || node_right < visible_left
+            || node_top > visible_bottom
+            || node_bottom < visible_top)
+    }
+
+    /// Check if a connection is visible (connection is visible if either endpoint node is visible)
+    pub fn is_connection_visible_simple(connection: &Connection, graph: &BlueprintGraph) -> bool {
+        // A connection is visible if either of its nodes is visible
+        let from_node = graph.nodes.iter().find(|n| n.id == connection.source_node);
+        let to_node = graph.nodes.iter().find(|n| n.id == connection.target_node);
+
+        match (from_node, to_node) {
+            (Some(from), Some(to)) => {
+                Self::is_node_visible_simple(from, graph) || Self::is_node_visible_simple(to, graph)
+            }
+            _ => false, // If either node doesn't exist, don't render the connection
+        }
+    }
+
+    // ── Utility helpers ───────────────────────────────────────────────────
+
+    /// Parse hex color string (#RRGGBB or #RRGGBBAA) to HSLA
+    pub fn parse_hex_color(hex: &str) -> Option<gpui::Hsla> {
+        let hex = hex.trim_start_matches('#');
+
+        // Parse RGB values
+        if hex.len() == 6 {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.0;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.0;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.0;
+
+            let rgba = gpui::Rgba { r, g, b, a: 1.0 };
+            Some(gpui::Hsla::from(rgba))
+        } else if hex.len() == 8 {
+            // Support RGBA format as well
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.0;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.0;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.0;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()? as f32 / 255.0;
+
+            let rgba = gpui::Rgba { r, g, b, a };
+            Some(gpui::Hsla::from(rgba))
+        } else {
+            None
+        }
+    }
+
+    /// Calculate the screen position of a pin on a node
+    pub fn calculate_pin_position(
+        node: &BlueprintNode,
+        pin_id: &str,
+        is_input: bool,
+        graph: &BlueprintGraph,
+    ) -> Option<Point<f32>> {
+        // Reroute nodes are a single dot at their graph position.
+        if node.node_type == NodeType::Reroute {
+            return Some(Self::graph_to_screen_pos(node.position, graph));
+        }
+
+        // These MUST match the values used in render_blueprint_node / render_node_pins.
+        const HEADER_H: f32 = 27.0;
+        const SEP_H: f32    =  1.0;
+        const BODY_PAD: f32 =  8.0;
+        const PIN_ROW_H: f32 = 16.0;
+        const PIN_GAP: f32  =  4.0;
+
+        let z   = graph.zoom_level;
+        let nsp = Self::graph_to_screen_pos(node.position, graph);
+
+        let row = if is_input {
+            node.inputs.iter().position(|p| p.id == pin_id)?
+        } else {
+            node.outputs.iter().position(|p| p.id == pin_id)?
+        };
+
+        // Y: top of node → header → separator → body padding → row center
+        let pin_y = nsp.y
+            + (HEADER_H + SEP_H + BODY_PAD) * z
+            + row as f32 * (PIN_ROW_H + PIN_GAP) * z
+            + (PIN_ROW_H * z) / 2.0;
+
+        // X: left or right edge based on input/output
+        let pin_x = if is_input {
+            nsp.x // Input pins are on the left edge
+        } else {
+            nsp.x + node.size.width * z // Output pins are on the right edge
+        };
+
+        Some(Point::new(pin_x, pin_y))
+    }
+}
