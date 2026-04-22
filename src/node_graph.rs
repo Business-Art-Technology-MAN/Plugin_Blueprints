@@ -738,23 +738,21 @@ impl NodeGraphRenderer {
             l: (node_color.l * 0.65).clamp(0.14, 0.44),
             a: 1.0,
         };
-        // Header gradient: top highlight → main color → darkened bottom (UE style)
-        // Top: slightly lighter + desaturated (the sheen/highlight edge)
+        // Header gradient: very subtle — barely-there lightness shift top→bottom
         let header_top = gpui::Hsla {
             h: title_bg.h,
-            s: (title_bg.s * 0.70).min(1.0),
-            l: (title_bg.l + 0.12).min(0.65),
+            s: title_bg.s,
+            l: (title_bg.l + 0.04).min(1.0),
             a: 1.0,
         };
-        // Bottom: slightly darker and more saturated (anchors the color)
         let header_bottom = gpui::Hsla {
             h: title_bg.h,
-            s: (title_bg.s * 1.05).min(1.0),
-            l: (title_bg.l - 0.08).max(0.05),
+            s: title_bg.s,
+            l: (title_bg.l - 0.03).max(0.0),
             a: 1.0,
         };
         let header_grad = gpui::linear_gradient(
-            180.0,  // top → bottom
+            180.0,
             gpui::linear_color_stop(header_top, 0.0),
             gpui::linear_color_stop(header_bottom, 1.0),
         );
