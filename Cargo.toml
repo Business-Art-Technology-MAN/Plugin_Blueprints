@@ -1,3 +1,6 @@
+# Market Lab: paths point at sibling submodule `../Pulsar-Native` (do not use upstream’s machine-local `E:/...`).
+# If `git submodule update` resets this file, re-apply or maintain a fork.
+
 [package]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
@@ -9,16 +12,16 @@ name = "blueprint_editor_plugin"
 
 [dependencies]
 # Plugin API (local — same binary, no DLL boundary)
-plugin_editor_api = { path = "E:/Documents/GitHub/genesis/Pulsar-Native/crates/plugin_editor_api" }
+plugin_editor_api = { path = "../Pulsar-Native/crates/plugin_editor_api" }
 
 # UI dependencies (local paths so traits resolve to the same crate instance)
 gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "5848353e2e208eac8c2cccfc7017cecddfcc32cf" }
-ui = { path = "E:/Documents/GitHub/genesis/Pulsar-Native/crates/ui" }
-ui_common = { path = "E:/Documents/GitHub/genesis/Pulsar-Native/ui-crates/ui_common" }
+ui = { path = "../Pulsar-Native/crates/ui" }
+ui_common = { path = "../Pulsar-Native/ui-crates/ui_common" }
 
 # Blueprint editor dependencies (local paths)
-pulsar_std = { path = "E:/Documents/GitHub/genesis/Pulsar-Native/crates/pulsar_std" }
-engine_backend = { path = "E:/Documents/GitHub/genesis/Pulsar-Native/crates/engine_backend" }
+pulsar_std = { path = "../Pulsar-Native/crates/pulsar_std" }
+engine_backend = { path = "../Pulsar-Native/crates/engine_backend" }
 
 # Compiler graph types — same revs as used by blueprint_compiler in Pulsar-Native
 graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "0cd1d0c0e8420757f98c480ab9c4ab28e2f63ae0" }
