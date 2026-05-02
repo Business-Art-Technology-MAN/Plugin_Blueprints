@@ -28,6 +28,8 @@ mod features;
 mod rendering;
 mod ui_components;
 mod io;
+#[cfg(feature = "marketlab")]
+mod otl_integration;
 
 // Re-export main types for plugin API compatibility
 pub use core::types::*;

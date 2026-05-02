@@ -181,6 +181,8 @@ impl BlueprintEditorPanel {
         if let Ok(compile_result) = result {
             match compile_result {
                 Ok(()) => {
+                    #[cfg(feature = "marketlab")]
+                    crate::otl_integration::schedule_otl_smoke_after_blueprint_compile();
                     // Success
                     smol::Timer::after(std::time::Duration::from_millis(500)).await;
                     let _ = panel_entity.update(cx, |panel, cx| {
